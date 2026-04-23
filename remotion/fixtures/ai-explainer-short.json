@@ -1,0 +1,77 @@
+{
+  "project": {
+    "id": "fixture_ai_explainer_short",
+    "title": "AI 视频工厂：稳定成片系统",
+    "template": "ai-explainer-short-v1",
+    "aspectRatio": "9:16",
+    "visualPreset": "clarity-blue"
+  },
+  "scenes": [
+    {
+      "id": "fixture_scene_1",
+      "order": 1,
+      "shotType": "title",
+      "visualType": "slide",
+      "visualPrompt": "高端 AI 科普短视频开场，强调视频生产系统。",
+      "voiceover": "你缺的可能不是更多 AI 工具，而是一条能反复跑通的视频生产线。",
+      "subtitle": "不是更多工具，而是稳定生产线",
+      "durationSec": 4,
+      "headline": "AI 视频工厂",
+      "emphasis": "稳定成片系统",
+      "keywords": ["AI", "短视频", "生产线"]
+    },
+    {
+      "id": "fixture_scene_2",
+      "order": 2,
+      "shotType": "pain",
+      "visualType": "caption",
+      "visualPrompt": "展示创作者卡在选题、脚本、分镜和渲染之间。",
+      "voiceover": "很多人会用工具，但每次都从零开始，所以产能一直不稳定。",
+      "subtitle": "会用工具，不等于能稳定交付",
+      "durationSec": 5,
+      "headline": "问题不在工具",
+      "emphasis": "流程断点",
+      "cards": ["选题没有标准", "脚本难复用", "分镜靠临场发挥", "渲染结果不稳定"],
+      "keywords": ["断点", "复用", "交付"]
+    },
+    {
+      "id": "fixture_scene_3",
+      "order": 3,
+      "shotType": "step",
+      "visualType": "screen",
+      "visualPrompt": "用流程图展示从选题到 MP4 的自动化链路。",
+      "voiceover": "正确做法是把选题、脚本、分镜、配音、字幕和模板渲染串成固定链路。",
+      "subtitle": "把内容生产拆成固定链路",
+      "durationSec": 6,
+      "layout": "process",
+      "cards": ["选题评分", "脚本拆解", "分镜生成", "Remotion 渲染"],
+      "keywords": ["流程", "模板", "自动化"]
+    },
+    {
+      "id": "fixture_scene_4",
+      "order": 4,
+      "shotType": "result",
+      "visualType": "image",
+      "visualPrompt": "展示稳定生产后的效率提升和质量控制。",
+      "voiceover": "当链路固定后，你优化的就不是单条视频，而是一整套内容生产系统。",
+      "subtitle": "优化一套系统，而不是单条视频",
+      "durationSec": 6,
+      "layout": "chart",
+      "chartData": [28, 45, 62, 78, 92],
+      "keywords": ["效率", "质量", "系统"]
+    },
+    {
+      "id": "fixture_scene_5",
+      "order": 5,
+      "shotType": "cta",
+      "visualType": "slide",
+      "visualPrompt": "结尾行动号召，强调先跑通一条链路。",
+      "voiceover": "先跑通一条标准链路，再逐步增加模板、预览、进度和云端渲染。",
+      "subtitle": "先跑通链路，再扩展能力",
+      "durationSec": 5,
+      "headline": "下一步",
+      "emphasis": "先让链路稳定",
+      "keywords": ["模板", "预览", "进度"]
+    }
+  ]
+}

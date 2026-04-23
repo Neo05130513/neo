@@ -7,7 +7,7 @@ import { nowIso, readJsonFile, simpleId, writeJsonFile, writeTextFile, ensureDir
 import { commandExists, getExecutablePath } from './runtime/commands';
 import { generatedRelativePath, publicPathFromRelative, resolveAppPath } from './runtime/paths';
 import { buildScriptShotBreakdown } from './script-shots';
-import { Script, StoryboardReview, Topic, Tutorial, VideoAspectRatio, VideoAsset, VideoOpsStatus, VideoProject, VideoPublishTier, VideoScene, VideoShotType, VideoVisualPreset, VideoVisualType } from './types';
+import { Script, StoryboardReview, Topic, Tutorial, VideoAspectRatio, VideoAsset, VideoOpsStatus, VideoProject, VideoPublishTier, VideoScene, VideoShotType, VideoTemplate, VideoVisualPreset, VideoVisualType } from './types';
 
 function formatErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -596,7 +596,7 @@ function ensureScriptTopicTutorialByScript(state: Awaited<ReturnType<typeof read
 
 export function buildStoryboard(project: VideoProject, script: Script, topic: Topic, tutorial: Tutorial): VideoScene[] {
   const scriptShots = buildScriptShotBreakdown(script, tutorial);
-  const useTechTemplate = project.template === 'tech-explainer-v1';
+  const useTechTemplate = project.template === 'tech-explainer-v1' || project.template === 'ai-explainer-short-v1';
 
   return scriptShots.map((shot) => {
     const shotType = shot.shotType;
@@ -663,11 +663,11 @@ async function appendStoryboardReview(params: {
   await writeJsonFile('data/storyboard-reviews.json', [review, ...reviews].slice(0, 500));
 }
 
-export async function createVideoProjectFromScript(scriptId: string, options: { aspectRatio?: VideoAspectRatio } = {}) {
+export async function createVideoProjectFromScript(scriptId: string, options: { aspectRatio?: VideoAspectRatio; template?: VideoTemplate } = {}) {
   return createVideoProjectFromScriptWithOptions(scriptId, options);
 }
 
-export async function createVideoProjectFromScriptWithOptions(scriptId: string, options: { aspectRatio?: VideoAspectRatio }) {
+export async function createVideoProjectFromScriptWithOptions(scriptId: string, options: { aspectRatio?: VideoAspectRatio; template?: VideoTemplate }) {
   const state = await readVideoState();
 
   const script = state.scripts.find((item) => item.id === scriptId);
@@ -686,7 +686,7 @@ export async function createVideoProjectFromScriptWithOptions(scriptId: string, 
     topicId: topic.id,
     scriptId: script.id,
     status: 'draft',
-    template: 'tech-explainer-v1',
+    template: options.template || 'ai-explainer-short-v1',
     title: script.title,
     aspectRatio: options.aspectRatio || '9:16',
     createdAt: timestamp,
@@ -716,7 +716,7 @@ export async function createVideoProjectFromScriptWithOptions(scriptId: string, 
   return { project, scenes: projectScenes, script, topic, tutorial };
 }
 
-export async function createVideoProjectsBatch(scriptIds: string[], options: { aspectRatio?: VideoAspectRatio } = {}) {
+export async function createVideoProjectsBatch(scriptIds: string[], options: { aspectRatio?: VideoAspectRatio; template?: VideoTemplate } = {}) {
   const results = [];
   for (const scriptId of scriptIds) {
     results.push(await createVideoProjectFromScriptWithOptions(scriptId, options));

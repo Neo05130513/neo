@@ -72,11 +72,11 @@ const tables: Record<TableName, TableConfig<any>> = {
   },
   render_jobs: {
     file: 'data/render-jobs.json',
-    createSql: 'CREATE TABLE IF NOT EXISTS render_jobs (id TEXT PRIMARY KEY,row_order INTEGER NOT NULL,project_id TEXT NOT NULL,status TEXT NOT NULL,attempt INTEGER NOT NULL DEFAULT 0,max_attempts INTEGER NOT NULL DEFAULT 2,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,started_at TEXT,completed_at TEXT,error TEXT,output_path TEXT)',
+    createSql: 'CREATE TABLE IF NOT EXISTS render_jobs (id TEXT PRIMARY KEY,row_order INTEGER NOT NULL,project_id TEXT NOT NULL,status TEXT NOT NULL,attempt INTEGER NOT NULL DEFAULT 0,max_attempts INTEGER NOT NULL DEFAULT 2,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,started_at TEXT,completed_at TEXT,error TEXT,output_path TEXT,stage TEXT,progress INTEGER)',
     selectSql: 'SELECT * FROM render_jobs ORDER BY row_order ASC',
-    insertSql: 'INSERT INTO render_jobs (id,row_order,project_id,status,attempt,max_attempts,created_at,updated_at,started_at,completed_at,error,output_path) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-    fromRow: (r): RenderJob => ({ id: r.id, projectId: r.project_id, status: r.status, attempt: r.attempt ?? 0, maxAttempts: r.max_attempts ?? 2, createdAt: r.created_at, updatedAt: r.updated_at, startedAt: r.started_at ?? undefined, completedAt: r.completed_at ?? undefined, error: r.error ?? undefined, outputPath: r.output_path ?? undefined }),
-    toParams: (i: RenderJob, o) => [i.id, o, i.projectId, i.status, i.attempt ?? 0, i.maxAttempts ?? 2, i.createdAt, i.updatedAt, i.startedAt ?? null, i.completedAt ?? null, i.error ?? null, i.outputPath ?? null]
+    insertSql: 'INSERT INTO render_jobs (id,row_order,project_id,status,attempt,max_attempts,created_at,updated_at,started_at,completed_at,error,output_path,stage,progress) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    fromRow: (r): RenderJob => ({ id: r.id, projectId: r.project_id, status: r.status, attempt: r.attempt ?? 0, maxAttempts: r.max_attempts ?? 2, createdAt: r.created_at, updatedAt: r.updated_at, startedAt: r.started_at ?? undefined, completedAt: r.completed_at ?? undefined, error: r.error ?? undefined, outputPath: r.output_path ?? undefined, stage: r.stage ?? undefined, progress: typeof r.progress === 'number' ? r.progress : undefined }),
+    toParams: (i: RenderJob, o) => [i.id, o, i.projectId, i.status, i.attempt ?? 0, i.maxAttempts ?? 2, i.createdAt, i.updatedAt, i.startedAt ?? null, i.completedAt ?? null, i.error ?? null, i.outputPath ?? null, i.stage ?? null, i.progress ?? null]
   },
   quality_reviews: {
     file: 'data/quality-reviews.json',
@@ -166,6 +166,8 @@ function ensureRenderJobColumns(database: any) {
   const existingColumns = new Set((database.prepare('PRAGMA table_info(render_jobs)').all() as Array<{ name: string }>).map((row) => row.name));
   if (!existingColumns.has('attempt')) database.exec('ALTER TABLE render_jobs ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0');
   if (!existingColumns.has('max_attempts')) database.exec('ALTER TABLE render_jobs ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 2');
+  if (!existingColumns.has('stage')) database.exec('ALTER TABLE render_jobs ADD COLUMN stage TEXT');
+  if (!existingColumns.has('progress')) database.exec('ALTER TABLE render_jobs ADD COLUMN progress INTEGER');
 }
 
 function ensureUserColumns(database: any) {

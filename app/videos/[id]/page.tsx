@@ -5,7 +5,10 @@ import { notFound } from 'next/navigation';
 import { StudioShell } from '../../_components/studio-shell';
 import { EmptyGuide, linkButtonStyle, MetricTile, newWindowLinkProps, Panel, SectionTitle, StatusBadge, subtlePanelStyle } from '../../_components/studio-ui';
 import { getRenderJobs, getScripts, getTutorials, getVideoAssets, getVideoProjects, getVideoScenes } from '@/lib/queries';
+import { buildSubtitleCues } from '@/lib/subtitles';
+import type { RemotionVideoInput } from '@/remotion/types';
 import { VideoProjectActions } from './project-actions';
+import { RemotionProjectPreview } from '../_components/remotion-project-preview';
 
 export default async function VideoProjectDetailPage({ params }: { params: { id: string } }) {
   const [projects, scenes, assets, scripts, tutorials, jobs] = await Promise.all([
@@ -25,6 +28,35 @@ export default async function VideoProjectDetailPage({ params }: { params: { id:
   const projectScenes = scenes.filter((item) => item.projectId === project.id).sort((a, b) => a.order - b.order);
   const projectAssets = assets.filter((item) => item.projectId === project.id);
   const videoAsset = projectAssets.find((asset) => asset.assetType === 'video' && asset.status === 'ready');
+  const audioBySceneId = new Map(projectAssets.filter((asset) => asset.assetType === 'audio' && asset.status === 'ready').map((asset) => [asset.sceneId, asset.path]));
+  const previewInput: RemotionVideoInput = {
+    project: {
+      id: project.id,
+      title: project.title,
+      template: project.template,
+      aspectRatio: project.aspectRatio,
+      visualPreset: project.visualPreset
+    },
+    scenes: projectScenes.map((scene) => ({
+      id: scene.id,
+      order: scene.order,
+      shotType: scene.shotType,
+      visualType: scene.visualType,
+      visualPrompt: scene.visualPrompt,
+      voiceover: scene.voiceover,
+      subtitle: scene.subtitle,
+      durationSec: scene.durationSec,
+      audioPath: audioBySceneId.get(scene.id),
+      layout: scene.layout,
+      headline: scene.headline,
+      emphasis: scene.emphasis,
+      keywords: scene.keywords,
+      cards: scene.cards,
+      chartData: scene.chartData,
+      transition: scene.transition,
+      subtitleCues: buildSubtitleCues(scene.voiceover, scene.durationSec)
+    }))
+  };
   const audioCount = projectAssets.filter((asset) => asset.assetType === 'audio').length;
   const imageCount = projectAssets.filter((asset) => asset.assetType === 'image').length;
   const subtitleCount = projectAssets.filter((asset) => asset.assetType === 'subtitle').length;
@@ -59,6 +91,15 @@ export default async function VideoProjectDetailPage({ params }: { params: { id:
           ) : null}
 
           <VideoProjectActions projectId={project.id} projectTitle={project.title} />
+
+          <section style={{ display: 'grid', gap: 12 }}>
+            <SectionTitle title="模板预览" note="不用等待最终 MP4，也可以先检查画面节奏、字幕和模板风格。" />
+            {projectScenes.length ? (
+              <RemotionProjectPreview input={previewInput} />
+            ) : (
+              <EmptyGuide title="还不能预览" text="生成分镜后，这里会显示 Remotion 模板预览。" />
+            )}
+          </section>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
             <AssetTile label="图片" value={imageCount} />
@@ -103,7 +144,7 @@ export default async function VideoProjectDetailPage({ params }: { params: { id:
             <InfoRow label="来源文档" value={tutorial?.title || '未知'} />
             <InfoRow label="创建时间" value={formatDate(project.createdAt)} />
             <InfoRow label="更新时间" value={formatDate(project.updatedAt)} />
-            <InfoRow label="模板" value="智能讲解模板" />
+            <InfoRow label="模板" value={formatTemplate(project.template)} />
           </Panel>
 
           <Panel style={{ display: 'grid', gap: 12 }}>
@@ -162,6 +203,15 @@ function formatJobStatus(status: string) {
     cancelled: '已停止'
   };
   return labels[status] || status;
+}
+
+function formatTemplate(template: string) {
+  const labels: Record<string, string> = {
+    'ai-explainer-short-v1': 'AI 科普短视频',
+    'tech-explainer-v1': '技术解释器',
+    'tutorial-demo-v1': '教程演示'
+  };
+  return labels[template] || template;
 }
 
 function formatStatus(status: string, jobStatus?: string) {

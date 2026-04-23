@@ -5,6 +5,7 @@ import { navigatePendingWindow, openPendingWindow } from '../_components/open-ne
 import type { Script, VideoProject } from '@/lib/types';
 
 type ProjectAspectRatio = '9:16' | '16:9';
+type ProjectTemplate = 'ai-explainer-short-v1' | 'tech-explainer-v1' | 'tutorial-demo-v1';
 
 type VoiceSettingsView = {
   provider: 'aliyun-cosyvoice' | 'minimax' | 'custom-http';
@@ -51,6 +52,16 @@ type VoiceProfileView = {
 
 const DEFAULT_MINIMAX_TEST_PROMPT = 'Create a high-end cinematic vertical keyframe for Chinese short video: a product manager in a modern startup office using AI to design a premium product introduction PPT, realistic photography, believable monitor UI, polished desk setup, dramatic but natural lighting, commercial ad quality, 9:16, no watermark, no gibberish text.';
 
+const templateOptions: Array<{ value: ProjectTemplate; label: string; note: string }> = [
+  { value: 'ai-explainer-short-v1', label: 'AI 科普短视频', note: '高密度观点、关键词、卡片和数据模块' },
+  { value: 'tech-explainer-v1', label: '技术解释器', note: '框架化拆解，适合流程和方法论' },
+  { value: 'tutorial-demo-v1', label: '教程演示', note: '偏步骤教学和操作说明' }
+];
+
+function templateLabel(template: string) {
+  return templateOptions.find((item) => item.value === template)?.label || template;
+}
+
 export function VideoActionsPanel({ scripts, projects }: { scripts: Script[]; projects: VideoProject[] }) {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string>('');
@@ -59,6 +70,7 @@ export function VideoActionsPanel({ scripts, projects }: { scripts: Script[]; pr
   const [testImageUrl, setTestImageUrl] = useState<string>('');
   const [selectedScriptIds, setSelectedScriptIds] = useState<string[]>([]);
   const [projectAspectRatio, setProjectAspectRatio] = useState<ProjectAspectRatio>('9:16');
+  const [projectTemplate, setProjectTemplate] = useState<ProjectTemplate>('ai-explainer-short-v1');
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [jobStates, setJobStates] = useState<Record<string, string>>({});
   const [qualitySummary, setQualitySummary] = useState<string>('');
@@ -155,7 +167,7 @@ export function VideoActionsPanel({ scripts, projects }: { scripts: Script[]; pr
       const response = await fetch('/api/videos/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scriptId, aspectRatio: projectAspectRatio })
+        body: JSON.stringify({ scriptId, aspectRatio: projectAspectRatio, template: projectTemplate })
       });
       const payload = await response.json();
       if (!response.ok) {
@@ -184,7 +196,7 @@ export function VideoActionsPanel({ scripts, projects }: { scripts: Script[]; pr
       const response = await fetch('/api/videos/batch-create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scriptIds: selectedScriptIds, aspectRatio: projectAspectRatio })
+        body: JSON.stringify({ scriptIds: selectedScriptIds, aspectRatio: projectAspectRatio, template: projectTemplate })
       });
       const payload = await response.json();
       if (!response.ok) {
@@ -693,6 +705,30 @@ export function VideoActionsPanel({ scripts, projects }: { scripts: Script[]; pr
               ))}
             </div>
           </div>
+          <div style={{ display: 'grid', gap: 8, padding: 12, borderRadius: 16, background: 'rgba(15,23,42,0.55)', border: '1px solid rgba(148,163,184,0.16)' }}>
+            <div style={{ color: '#f8fafc', fontWeight: 800 }}>视频模板</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+              {templateOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setProjectTemplate(option.value)}
+                  style={{
+                    border: `1px solid ${projectTemplate === option.value ? '#67e8f9' : 'rgba(148,163,184,0.22)'}`,
+                    borderRadius: 14,
+                    padding: '12px 14px',
+                    background: projectTemplate === option.value ? 'rgba(8,145,178,0.24)' : 'rgba(255,255,255,0.04)',
+                    color: projectTemplate === option.value ? '#a5f3fc' : '#e5ecf7',
+                    cursor: 'pointer',
+                    textAlign: 'left'
+                  }}
+                >
+                  <div style={{ fontWeight: 850 }}>{option.label}</div>
+                  <div style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.5, marginTop: 4 }}>{option.note}</div>
+                </button>
+              ))}
+            </div>
+          </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: 12, borderRadius: 16, background: 'rgba(15,23,42,0.55)', border: '1px solid rgba(148,163,184,0.16)' }}>
             <div style={{ color: '#cbd5e1', lineHeight: 1.7 }}>先勾选待创建脚本，再一键批量创建视频项目。已经创建过的视频脚本不会重复出现在这里。</div>
             <button onClick={createSelectedProjects} disabled={busyKey !== null || selectedScriptIds.length === 0} style={buttonStyle(busyKey === 'batch-create')}>
@@ -751,7 +787,7 @@ export function VideoActionsPanel({ scripts, projects }: { scripts: Script[]; pr
                   />
                   <div>
                     <div style={{ color: '#f8fafc', fontWeight: 700 }}>{project.title}</div>
-                    <div style={{ color: '#94a3b8', marginTop: 6 }}>{project.status} · 队列状态 {jobStates[project.id] || 'idle'} · {new Date(project.updatedAt).toLocaleString('zh-CN', { hour12: false })}</div>
+                    <div style={{ color: '#94a3b8', marginTop: 6 }}>{project.status} · {templateLabel(project.template)} · 队列状态 {jobStates[project.id] || 'idle'} · {new Date(project.updatedAt).toLocaleString('zh-CN', { hour12: false })}</div>
                     {project.lastError ? <div style={{ marginTop: 8, color: '#fecaca', lineHeight: 1.7 }}>失败原因：{project.lastError}</div> : null}
                   </div>
                 </div>

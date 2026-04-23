@@ -9,7 +9,9 @@ import type { Script, Topic, Tutorial, VideoAsset, VideoProject, VideoScene } fr
 import type { RemotionVideoInput } from '@/remotion/types';
 
 function getCompositionId(template: string) {
-  return template === 'tech-explainer-v1' ? 'TechExplainer' : 'TutorialDemo';
+  if (template === 'tech-explainer-v1') return 'TechExplainer';
+  if (template === 'ai-explainer-short-v1') return 'AiExplainerShort';
+  return 'TutorialDemo';
 }
 
 async function loadRemotionModules() {

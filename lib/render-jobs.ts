@@ -25,6 +25,17 @@ async function writeJobs(jobs: RenderJob[]) {
   await writeJsonFile('data/render-jobs.json', jobs);
 }
 
+async function updateJobProgress(jobId: string, patch: Partial<Pick<RenderJob, 'stage' | 'progress' | 'error' | 'updatedAt'>>) {
+  const jobs = await readJobs();
+  const timestamp = nowIso();
+  await writeJobs(jobs.map((job) => job.id === jobId ? {
+    ...job,
+    ...patch,
+    progress: typeof patch.progress === 'number' ? Math.max(0, Math.min(100, Math.round(patch.progress))) : job.progress,
+    updatedAt: patch.updatedAt || timestamp
+  } : job));
+}
+
 export async function enqueueRenderJob(projectId: string, options: { force?: boolean; maxAttempts?: number } = {}) {
   const jobs = await readJobs();
   const activeJob = jobs.find((job) => job.projectId === projectId && (job.status === 'queued' || job.status === 'running'));
@@ -37,6 +48,8 @@ export async function enqueueRenderJob(projectId: string, options: { force?: boo
     status: 'queued',
     attempt: 0,
     maxAttempts: options.maxAttempts || DEFAULT_MAX_ATTEMPTS,
+    stage: 'queued',
+    progress: 8,
     createdAt: now,
     updatedAt: now
   };
@@ -85,6 +98,8 @@ export async function cancelRenderJob(projectId: string) {
       status: 'cancelled' as const,
       completedAt: timestamp,
       updatedAt: timestamp,
+      stage: 'cancelled',
+      progress: 100,
       error: '用户已停止生成'
     };
   });
@@ -103,6 +118,8 @@ export async function processRenderQueue() {
       const message = `可用内存 ${device.freeMemoryGb}GB，低于暂停阈值 ${settings.lowMemoryThresholdGb}GB，正在等待内存释放。`;
       await writeJobs(jobs.map((job) => job.id === nextQueuedJob.id ? {
         ...job,
+        stage: 'waiting-for-memory',
+        progress: job.progress || 8,
         error: message,
         updatedAt: nowIso()
       } : job));
@@ -127,6 +144,8 @@ export async function processRenderQueue() {
     ...nextJob,
     status: 'running',
     attempt: nextJob.attempt + 1,
+    stage: 'starting',
+    progress: Math.max(nextJob.progress || 0, 18),
     startedAt,
     updatedAt: startedAt,
     error: undefined
@@ -134,6 +153,7 @@ export async function processRenderQueue() {
   await writeJobs(jobs.map((job) => (job.id === nextJob.id ? runningJob : job)));
 
   try {
+    await updateJobProgress(nextJob.id, { stage: 'rendering-remotion', progress: 42 });
     const result = await renderVideoProjectWithRemotion(nextJob.projectId);
     const latest = (await readJobs()).find((job) => job.id === nextJob.id);
     if (latest?.status === 'cancelled') {
@@ -148,6 +168,8 @@ export async function processRenderQueue() {
       completedAt,
       updatedAt: completedAt,
       outputPath: result.project.outputPath,
+      stage: result.remotionReady ? 'completed' : 'failed',
+      progress: result.remotionReady ? 100 : 100,
       error: result.remotionReady ? undefined : result.project.lastError
     };
     await writeJobs((await readJobs()).map((job) => (job.id === nextJob.id ? completedJob : job)));
@@ -168,6 +190,8 @@ export async function processRenderQueue() {
       status: shouldRetry ? 'queued' : 'failed',
       completedAt: shouldRetry ? undefined : failedAt,
       updatedAt: failedAt,
+      stage: shouldRetry ? 'retrying' : 'failed',
+      progress: shouldRetry ? 18 : 100,
       error: shouldRetry ? `Attempt ${runningJob.attempt} failed, retrying: ${message}` : message
     };
     await writeJobs((await readJobs()).map((job) => (job.id === nextJob.id ? failedJob : job)));
