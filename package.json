@@ -31,6 +31,7 @@
     "undici": "^7.24.7"
   },
   "overrides": {
+    "remotion": "4.0.450",
     "@remotion/compositor-darwin-x64": "4.0.450",
     "@remotion/licensing": "4.0.450",
     "@remotion/media-parser": "4.0.450",
