@@ -3,9 +3,14 @@
 import { useState } from 'react';
 import { navigatePendingWindow, openPendingWindow } from '../_components/open-new-window';
 
+type AspectRatio = '9:16' | '16:9';
+type ProjectTemplate = 'ai-explainer-short-v1' | 'tech-explainer-v1' | 'tutorial-demo-v1';
+
 export function ScriptActions({ scriptId, tutorialId, hasProject, projectIds = [] }: { scriptId: string; tutorialId: string; hasProject: boolean; projectIds?: string[] }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('9:16');
+  const [template, setTemplate] = useState<ProjectTemplate>('ai-explainer-short-v1');
 
   async function createVideoProject() {
     const nextWindow = openPendingWindow();
@@ -15,7 +20,7 @@ export function ScriptActions({ scriptId, tutorialId, hasProject, projectIds = [
       const response = await fetch('/api/videos/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scriptId })
+        body: JSON.stringify({ scriptId, aspectRatio, template })
       });
       const payload = await response.json();
       if (!response.ok) {
@@ -81,6 +86,15 @@ export function ScriptActions({ scriptId, tutorialId, hasProject, projectIds = [
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+        <button onClick={() => setAspectRatio('9:16')} style={optionButtonStyle(aspectRatio === '9:16')}>竖屏 9:16</button>
+        <button onClick={() => setAspectRatio('16:9')} style={optionButtonStyle(aspectRatio === '16:9')}>横屏 16:9</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+        <button onClick={() => setTemplate('ai-explainer-short-v1')} style={optionButtonStyle(template === 'ai-explainer-short-v1')}>AI 科普</button>
+        <button onClick={() => setTemplate('tech-explainer-v1')} style={optionButtonStyle(template === 'tech-explainer-v1')}>技术解释</button>
+        <button onClick={() => setTemplate('tutorial-demo-v1')} style={optionButtonStyle(template === 'tutorial-demo-v1')}>教程演示</button>
+      </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <button onClick={createVideoProject} disabled={busy !== null} style={primaryButtonStyle(busy === 'create')}>
           {busy === 'create' ? '创建中...' : hasProject ? '确认镜头并再创建一个视频项目' : '确认镜头并创建视频项目'}
@@ -97,6 +111,18 @@ export function ScriptActions({ scriptId, tutorialId, hasProject, projectIds = [
       {message ? <div style={{ color: '#93c5fd', lineHeight: 1.7 }}>{message}</div> : null}
     </div>
   );
+}
+
+function optionButtonStyle(active: boolean) {
+  return {
+    border: `1px solid ${active ? '#38bdf8' : 'rgba(148,163,184,0.24)'}`,
+    borderRadius: 12,
+    padding: '10px 12px',
+    background: active ? '#38bdf8' : 'rgba(255,255,255,0.04)',
+    color: active ? '#0f172a' : '#e5ecf7',
+    fontWeight: 800,
+    cursor: 'pointer'
+  } as const;
 }
 
 function primaryButtonStyle(isBusy: boolean) {

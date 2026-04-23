@@ -56,6 +56,7 @@ export function RemotionProjectPreview({ input }: { input: RemotionVideoInput })
         fps={30}
         controls
         loop
+        acknowledgeRemotionLicense
         style={{ width: '100%' }}
       />
     </div>

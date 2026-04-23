@@ -1,0 +1,76 @@
+{
+  "project": {
+    "id": "fixture_ai_explainer_landscape",
+    "title": "横屏 AI 产品讲解模板",
+    "template": "ai-explainer-short-v1",
+    "aspectRatio": "16:9",
+    "visualPreset": "midnight-cyan"
+  },
+  "scenes": [
+    {
+      "id": "landscape_scene_1",
+      "order": 1,
+      "shotType": "title",
+      "visualType": "slide",
+      "visualPrompt": "横屏产品讲解开场，左右信息分区，突出核心卖点。",
+      "voiceover": "横屏讲解不应该只是把竖屏模板塞进画布，而是要重新组织信息密度。",
+      "subtitle": "横屏要重新组织信息密度",
+      "durationSec": 5,
+      "headline": "横屏 AI 产品讲解",
+      "emphasis": "重新组织信息密度",
+      "keywords": ["横屏", "模板", "信息密度"]
+    },
+    {
+      "id": "landscape_scene_2",
+      "order": 2,
+      "shotType": "pain",
+      "visualType": "caption",
+      "visualPrompt": "展示竖屏模板直接拉伸到横屏后的信息浪费。",
+      "voiceover": "如果横屏还沿用竖屏排版，左右会空，标题会挤，字幕和内容也容易互相抢位置。",
+      "subtitle": "不能把竖屏模板直接拉到横屏",
+      "durationSec": 6,
+      "headline": "常见问题",
+      "emphasis": "空间浪费",
+      "cards": ["左右空间空掉", "标题层级不清", "字幕抢占内容", "节奏不像横屏"]
+    },
+    {
+      "id": "landscape_scene_3",
+      "order": 3,
+      "shotType": "step",
+      "visualType": "screen",
+      "visualPrompt": "横屏流程卡片，展示左中右三段式讲解。",
+      "voiceover": "横屏更适合三段式结构：左侧给结论，中间拆步骤，右侧放证据或关键词。",
+      "subtitle": "左侧结论，中间步骤，右侧证据",
+      "durationSec": 7,
+      "layout": "process",
+      "cards": ["结论先行", "步骤拆解", "证据支撑"],
+      "keywords": ["结论", "步骤", "证据"]
+    },
+    {
+      "id": "landscape_scene_4",
+      "order": 4,
+      "shotType": "result",
+      "visualType": "image",
+      "visualPrompt": "横屏数据面板，展示模板质量提升。",
+      "voiceover": "这样预览页看到的就是横屏模板本身，而不是一个被迫居中的竖屏版本。",
+      "subtitle": "预览页应该显示真正的横屏模板",
+      "durationSec": 6,
+      "layout": "chart",
+      "chartData": [24, 45, 61, 78, 90],
+      "keywords": ["预览", "横屏", "质量"]
+    },
+    {
+      "id": "landscape_scene_5",
+      "order": 5,
+      "shotType": "cta",
+      "visualType": "slide",
+      "visualPrompt": "横屏结尾，强调确认比例和模板后再生成。",
+      "voiceover": "生成前先确认比例和模板，再进入渲染，就能减少返工。",
+      "subtitle": "先确认比例和模板，再进入渲染",
+      "durationSec": 5,
+      "headline": "生成前检查",
+      "emphasis": "减少返工",
+      "keywords": ["比例", "模板", "渲染"]
+    }
+  ]
+}
