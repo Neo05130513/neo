@@ -1,0 +1,724 @@
+'use client';
+
+import Link from 'next/link';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { linkButtonStyle, newWindowLinkProps, primaryButtonStyle, secondaryButtonStyle, StatusBadge, subtlePanelStyle } from './_components/studio-ui';
+import { estimateGenerationFromText } from '@/lib/performance/estimate';
+import type { PerformanceSettings } from '@/lib/performance/settings';
+
+type VoiceProfileView = {
+  id: string;
+  name: string;
+  provider: string;
+  status: 'sample_uploaded' | 'ready' | 'failed';
+  isDefault?: boolean;
+  lastError?: string;
+};
+
+type StepState = 'idle' | 'waiting' | 'running' | 'done' | 'failed';
+type ProgressStep = {
+  id: string;
+  title: string;
+  desc: string;
+  status: StepState;
+  progress: number;
+  detail?: string;
+  href?: string;
+};
+
+function compactError(value: unknown) {
+  const text = value instanceof Error ? value.message : String(value || '');
+  return text.length > 180 ? `${text.slice(0, 177)}...` : text;
+}
+
+type PendingScriptConfirmation = {
+  scriptId: string;
+  title: string;
+  href: string;
+  shots: ScriptShotView[];
+};
+
+type ScriptShotView = {
+  order: number;
+  title: string;
+  voiceover: string;
+  subtitle: string;
+  visualPrompt: string;
+  durationSec: number;
+};
+
+const initialSteps: ProgressStep[] = [
+  { id: 'voice', title: '确认旁白音色', desc: '从我的素材中选择一个复刻完成的音色。', status: 'idle', progress: 0 },
+  { id: 'import', title: '导入文档', desc: '上传文件或保存粘贴文本，生成文档素材。', status: 'idle', progress: 0 },
+  { id: 'parse', title: '理解文档并撰写脚本', desc: '系统会解析文档内容，自动生成可用于讲解视频的脚本。', status: 'idle', progress: 0 },
+  { id: 'project', title: '创建视频项目', desc: '使用智能讲解模板生成视频项目和分镜。', status: 'idle', progress: 0 },
+  { id: 'render', title: '生成旁白、画面与成片', desc: '提交制作任务，生成音频、字幕和最终视频。', status: 'idle', progress: 0 },
+  { id: 'review', title: '查看结果并继续修改', desc: '完成后可进入视频详情，检查脚本、分镜、资源和输出文件。', status: 'idle', progress: 0 }
+];
+
+const storageKey = 'video-factory:start-making-state:v2';
+const legacyStorageKeys = ['video-factory:start-making-state:v1'];
+
+function statusTone(status: StepState) {
+  if (status === 'done') return 'success' as const;
+  if (status === 'running') return 'info' as const;
+  if (status === 'waiting') return 'warning' as const;
+  if (status === 'failed') return 'danger' as const;
+  return 'neutral' as const;
+}
+
+function statusText(status: StepState) {
+  if (status === 'done') return '完成';
+  if (status === 'running') return '进行中';
+  if (status === 'waiting') return '待确认';
+  if (status === 'failed') return '失败';
+  return '等待';
+}
+
+function providerLabel(provider: string) {
+  if (provider === 'aliyun-cosyvoice') return 'CosyVoice';
+  if (provider === 'minimax') return 'MiniMax';
+  return '自定义接口';
+}
+
+export function StartMakingClient({ initialProfiles, performanceSettings }: { initialProfiles: VoiceProfileView[]; performanceSettings: PerformanceSettings }) {
+  const readyVoices = useMemo(() => initialProfiles.filter((profile) => profile.status === 'ready'), [initialProfiles]);
+  const defaultVoice = readyVoices.find((profile) => profile.isDefault) || readyVoices[0];
+  const [selectedVoiceId, setSelectedVoiceId] = useState(defaultVoice?.id || '');
+  const [documents, setDocuments] = useState<File[]>([]);
+  const [pastedTitle, setPastedTitle] = useState('粘贴文本');
+  const [pastedText, setPastedText] = useState('');
+  const [aspectRatio, setAspectRatio] = useState<'9:16' | '16:9'>('9:16');
+  const [autoRender, setAutoRender] = useState(true);
+  const [backgroundRequested, setBackgroundRequested] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [steps, setSteps] = useState<ProgressStep[]>(initialSteps);
+  const [message, setMessage] = useState('');
+  const [activeProjectId, setActiveProjectId] = useState('');
+  const [pendingScript, setPendingScript] = useState<PendingScriptConfirmation | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const folderInputRef = useRef<HTMLInputElement | null>(null);
+  const voiceSectionRef = useRef<HTMLElement | null>(null);
+  const documentSectionRef = useRef<HTMLElement | null>(null);
+  const generateSectionRef = useRef<HTMLElement | null>(null);
+  const pollingProjectRef = useRef<string | null>(null);
+  const backgroundRequestedRef = useRef(false);
+  const backgroundProjectRef = useRef<string | null>(null);
+  const stopRequestedRef = useRef(false);
+
+  const selectedVoice = readyVoices.find((voice) => voice.id === selectedVoiceId);
+  const hasDocumentInput = documents.length > 0 || pastedText.trim().length > 0;
+  const canGenerate = Boolean(selectedVoiceId && hasDocumentInput && !busy && !pendingScript);
+  const totalProgress = Math.round(steps.reduce((total, step) => total + step.progress, 0) / steps.length);
+  const fileBytes = useMemo(() => documents.reduce((total, file) => total + file.size, 0), [documents]);
+  const estimate = useMemo(() => estimateGenerationFromText({
+    text: pastedText,
+    fileCount: documents.length,
+    fileBytes,
+    autoRender,
+    settings: performanceSettings
+  }), [autoRender, documents.length, fileBytes, pastedText, performanceSettings]);
+  const remainingEstimate = busy
+    ? estimate.estimatedGenerationMaxMinutes <= 1
+      ? '约 1 分钟内'
+      : `约 ${Math.max(1, Math.ceil(estimate.estimatedGenerationMinMinutes * (1 - totalProgress / 100)))}-${Math.max(1, Math.ceil(estimate.estimatedGenerationMaxMinutes * (1 - totalProgress / 100)))} 分钟`
+    : estimate.estimatedGenerationRange;
+
+  useEffect(() => {
+    try {
+      legacyStorageKeys.forEach((key) => window.localStorage.removeItem(key));
+      const raw = window.localStorage.getItem(storageKey);
+      if (!raw) {
+        setHydrated(true);
+        return;
+      }
+      const stored = JSON.parse(raw) as {
+        selectedVoiceId?: string;
+        pastedTitle?: string;
+        pastedText?: string;
+        aspectRatio?: '9:16' | '16:9';
+        autoRender?: boolean;
+        steps?: ProgressStep[];
+        message?: string;
+        activeProjectId?: string;
+        pendingScript?: PendingScriptConfirmation | null;
+      };
+      if (stored.selectedVoiceId && readyVoices.some((voice) => voice.id === stored.selectedVoiceId)) setSelectedVoiceId(stored.selectedVoiceId);
+      if (stored.pastedTitle) setPastedTitle(stored.pastedTitle);
+      if (stored.pastedText) setPastedText(stored.pastedText);
+      if (stored.aspectRatio === '9:16' || stored.aspectRatio === '16:9') setAspectRatio(stored.aspectRatio);
+      if (typeof stored.autoRender === 'boolean') setAutoRender(stored.autoRender);
+      if (Array.isArray(stored.steps)) setSteps(initialSteps.map((step) => ({ ...step, ...(stored.steps || []).find((item) => item.id === step.id) })));
+      if (stored.message) setMessage(stored.message);
+      if (stored.activeProjectId) setActiveProjectId(stored.activeProjectId);
+      if (stored.pendingScript?.scriptId && Array.isArray(stored.pendingScript.shots)) setPendingScript(stored.pendingScript);
+    } catch {
+    } finally {
+      setHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    window.localStorage.setItem(storageKey, JSON.stringify({
+      selectedVoiceId,
+      pastedTitle,
+      pastedText,
+      aspectRatio,
+      autoRender,
+      steps,
+      message,
+      activeProjectId,
+      pendingScript
+    }));
+  }, [hydrated, selectedVoiceId, pastedTitle, pastedText, aspectRatio, autoRender, steps, message, activeProjectId, pendingScript]);
+
+  useEffect(() => {
+    const renderStep = steps.find((step) => step.id === 'render');
+    if (!activeProjectId || renderStep?.status !== 'running' || busy) return;
+    if (backgroundProjectRef.current === activeProjectId) return;
+    if (pollingProjectRef.current === activeProjectId) return;
+    pollingProjectRef.current = activeProjectId;
+    void pollRender(activeProjectId).finally(() => {
+      pollingProjectRef.current = null;
+    });
+  }, [activeProjectId, steps, busy]);
+
+  function updateStep(id: string, patch: Partial<ProgressStep>) {
+    setSteps((current) => current.map((step) => step.id === id ? { ...step, ...patch } : step));
+  }
+
+  function resetSteps() {
+    setSteps(initialSteps);
+    setMessage('');
+    setActiveProjectId('');
+    setPendingScript(null);
+    setBackgroundRequested(false);
+    backgroundRequestedRef.current = false;
+    backgroundProjectRef.current = null;
+    stopRequestedRef.current = false;
+  }
+
+  function moveCurrentTaskToBackground() {
+    backgroundRequestedRef.current = true;
+    setBackgroundRequested(true);
+    if (!activeProjectId) {
+      setMessage('已收到后台运行请求。当前步骤完成并提交渲染后，会自动转入后台队列。');
+      return;
+    }
+
+    backgroundProjectRef.current = activeProjectId;
+    pollingProjectRef.current = null;
+    updateStep('render', { status: 'running', progress: 40, href: `/videos/${activeProjectId}`, detail: '已转入后台队列，可以继续制作下一条视频。' });
+    updateStep('review', { status: 'running', progress: 50, href: `/videos/${activeProjectId}`, detail: '后台制作中，打开视频详情查看最新状态。' });
+    setBusy(false);
+    setDocuments([]);
+    setPastedTitle('粘贴文本');
+    setPastedText('');
+    setMessage('当前视频已转入后台运行。你现在可以开始制作下一条。');
+  }
+
+  function addFiles(fileList: FileList | File[]) {
+    const nextFiles = Array.from(fileList).filter((file) => /\.(docx|txt|md|html)$/i.test(file.name));
+    if (!nextFiles.length) {
+      setMessage('请选择 docx / txt / md / html 文件。');
+      return;
+    }
+    setDocuments((current) => [...current, ...nextFiles]);
+  }
+
+  async function setDefaultVoice(profileId: string) {
+    updateStep('voice', { status: 'running', progress: 40, detail: selectedVoice ? `正在使用 ${selectedVoice.name}` : undefined });
+    const response = await fetch(`/api/voices/profiles/${profileId}/default`, { method: 'POST' });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || '设置默认音色失败');
+    updateStep('voice', { status: 'done', progress: 100, detail: `已选择：${payload.profile?.name || selectedVoice?.name || profileId}` });
+  }
+
+  async function pollRender(projectId: string) {
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      if (stopRequestedRef.current) return;
+      if (backgroundProjectRef.current === projectId || backgroundRequestedRef.current) return;
+      const response = await fetch(`/api/videos/${projectId}/render-job`, { cache: 'no-store' });
+      const payload = await response.json();
+      const job = payload.job;
+      if (job?.status === 'completed') {
+        updateStep('render', { status: 'done', progress: 100, detail: job.outputPath || '成片已生成' });
+        updateStep('review', { status: 'done', progress: 100, href: `/videos/${projectId}`, detail: '可以打开视频详情查看输出和制作记录。' });
+        return;
+      }
+      if (job?.status === 'failed') {
+        updateStep('render', { status: 'failed', progress: 100, href: `/videos/${projectId}`, detail: compactError(job.error || '制作任务失败，可打开视频详情查看原因并重试。') });
+        updateStep('review', { status: 'waiting', progress: 70, href: `/videos/${projectId}`, detail: '项目已保留，可以打开视频详情修改脚本、检查音色或重新渲染。' });
+        return;
+      }
+      if (job?.status === 'cancelled') {
+        updateStep('render', { status: 'failed', progress: 100, detail: job.error || '已停止生成' });
+        updateStep('review', { status: 'failed', progress: 100, href: `/videos/${projectId}`, detail: '已停止生成，可以打开视频详情重新渲染或删除。' });
+        return;
+      }
+      updateStep('render', {
+        status: 'running',
+        progress: Math.min(95, 35 + attempt),
+        detail: job?.error && job.status === 'queued'
+          ? compactError(job.error)
+          : job?.status === 'running' ? '正在生成旁白、字幕和成片...' : '任务已提交，等待开始制作...'
+      });
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+    }
+    updateStep('render', { status: 'running', progress: 95, detail: '任务仍在制作中，可以到视频库继续查看。' });
+    updateStep('review', { status: 'running', progress: 60, href: `/videos/${projectId}`, detail: '打开视频详情查看最新进度。' });
+  }
+
+  async function generateVideo() {
+    if (!selectedVoiceId) {
+      setMessage('请先从我的素材中选择一个复刻完成的音色。');
+      return;
+    }
+    if (!hasDocumentInput) {
+      setMessage('请先拖拽/选择文档，或者粘贴文本。');
+      return;
+    }
+
+    setBusy(true);
+    setBackgroundRequested(false);
+    backgroundRequestedRef.current = false;
+    backgroundProjectRef.current = null;
+    stopRequestedRef.current = false;
+    resetSteps();
+    try {
+      await setDefaultVoice(selectedVoiceId);
+      ensureNotStopped();
+
+      updateStep('import', { status: 'running', progress: 35, detail: documents.length ? `正在上传 ${documents.length} 个文件` : '正在保存粘贴文本' });
+      const form = new FormData();
+      documents.forEach((file) => form.append('documents', file));
+      if (pastedText.trim()) {
+        form.append('title', pastedTitle.trim() || '粘贴文本');
+        form.append('text', pastedText.trim());
+      }
+      const importResponse = await fetch('/api/import/upload', { method: 'POST', body: form });
+      const importPayload = await importResponse.json();
+      if (!importResponse.ok) throw new Error(importPayload.error || '导入文档失败');
+      ensureNotStopped();
+
+      const tutorial = importPayload.created?.[0] || importPayload.duplicates?.[0];
+      if (!tutorial?.tutorialId && !tutorial?.id) {
+        throw new Error('没有创建或找到可继续处理的文档。');
+      }
+      const tutorialId = tutorial.id || tutorial.tutorialId;
+      updateStep('import', {
+        status: 'done',
+        progress: 100,
+        detail: importPayload.created?.[0] ? `已导入：${tutorial.title}` : `文档已存在，继续使用：${tutorial.title}`,
+        href: `/tutorials/${tutorialId}`
+      });
+
+      updateStep('parse', { status: 'running', progress: 35, detail: '正在生成脚本...' });
+      const pipelineResponse = await fetch('/api/pipeline/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tutorialId })
+      });
+      const pipelinePayload = await pipelineResponse.json();
+      if (!pipelineResponse.ok) throw new Error(pipelinePayload.error || '生成脚本失败');
+      ensureNotStopped();
+      const script = pipelinePayload.results?.[0]?.scripts?.[0];
+      if (!script?.id) throw new Error('没有生成可用于视频制作的脚本。');
+      const shots = pipelinePayload.results?.[0]?.scriptShots?.[0]?.shots || [];
+      setPendingScript({ scriptId: script.id, title: script.title, href: `/scripts/${script.id}`, shots });
+      updateStep('parse', { status: 'waiting', progress: 100, detail: `已生成脚本和 ${shots.length} 个镜头，请先确认镜头拆解。`, href: `/scripts/${script.id}` });
+      updateStep('project', { status: 'waiting', progress: 0, detail: '等待客户确认镜头拆解后，再创建视频项目。' });
+      updateStep('render', { status: 'idle', progress: 0, detail: '确认镜头后再进入生成。' });
+      updateStep('review', { status: 'idle', progress: 0, detail: '确认镜头后再进入结果检查。' });
+      setMessage('脚本和镜头拆解已生成。请先确认镜头，再继续创建视频。');
+    } catch (error) {
+      const text = error instanceof Error ? error.message : '生成视频失败';
+      setMessage(text);
+      setSteps((current) => current.map((step) => step.status === 'running' ? { ...step, status: 'failed', progress: 100, detail: text } : step));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmScriptAndContinue() {
+    if (!pendingScript) {
+      setMessage('还没有需要确认的镜头拆解。');
+      return;
+    }
+
+    setBusy(true);
+    stopRequestedRef.current = false;
+    setBackgroundRequested(false);
+    backgroundRequestedRef.current = false;
+    backgroundProjectRef.current = null;
+    setMessage('已确认镜头拆解，正在创建视频项目...');
+
+    try {
+      updateStep('parse', { status: 'done', progress: 100, detail: `已确认 ${pendingScript.shots.length} 个镜头。`, href: pendingScript.href });
+      updateStep('project', { status: 'running', progress: 45, detail: '正在创建视频项目和分镜...' });
+      const createResponse = await fetch('/api/videos/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scriptId: pendingScript.scriptId, aspectRatio })
+      });
+      const createPayload = await createResponse.json();
+      if (!createResponse.ok) throw new Error(createPayload.error || '创建视频项目失败');
+      ensureNotStopped();
+      const projectId = createPayload.project?.id;
+      if (!projectId) throw new Error('视频项目创建成功但没有返回项目 ID。');
+      setActiveProjectId(projectId);
+      updateStep('project', { status: 'done', progress: 100, detail: `视频项目已创建：${createPayload.project.title}`, href: `/videos/${projectId}` });
+
+      if (autoRender) {
+        updateStep('render', { status: 'running', progress: 20, detail: '正在提交制作任务...' });
+        const renderResponse = await fetch(`/api/videos/${projectId}/render`, { method: 'POST' });
+        const renderPayload = await renderResponse.json();
+      if (!renderResponse.ok) throw new Error(renderPayload.error || '提交制作任务失败');
+      ensureNotStopped();
+      updateStep('review', { status: 'running', progress: 30, href: `/videos/${projectId}`, detail: '项目已创建，生成完成后可在这里继续修改。' });
+      if (backgroundRequestedRef.current) {
+          backgroundProjectRef.current = projectId;
+          updateStep('render', { status: 'running', progress: 35, href: `/videos/${projectId}`, detail: '任务已进入后台队列，可以继续开始制作下一条视频。' });
+          updateStep('review', { status: 'running', progress: 50, href: `/videos/${projectId}`, detail: '后台制作中，打开视频详情查看最新状态。' });
+        } else {
+          await pollRender(projectId);
+        }
+      } else {
+        updateStep('render', { status: 'idle', progress: 0, detail: '已跳过自动制作，可以在视频详情中手动开始。', href: `/videos/${projectId}` });
+        updateStep('review', { status: 'running', progress: 50, href: `/videos/${projectId}`, detail: '打开视频详情继续制作或修改。' });
+      }
+
+      setPendingScript(null);
+      setMessage('流程已提交，下面可以看到每个环节的状态和可打开的位置。');
+      if (backgroundRequestedRef.current) {
+        setDocuments([]);
+        setPastedTitle('粘贴文本');
+        setPastedText('');
+        setMessage('当前视频已转入后台运行。你现在可以开始制作下一条。');
+      }
+    } catch (error) {
+      const text = compactError(error instanceof Error ? error : new Error('创建视频失败'));
+      setMessage(text);
+      setSteps((current) => current.map((step) => step.status === 'running' ? { ...step, status: 'failed', progress: 100, detail: text } : step));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function retryActiveRender() {
+    if (!activeProjectId) {
+      window.open('/videos', '_blank', 'noopener,noreferrer');
+      return;
+    }
+    setBusy(true);
+    setMessage('正在重新提交渲染任务...');
+    try {
+      updateStep('render', { status: 'running', progress: 25, href: `/videos/${activeProjectId}`, detail: '已重新提交，正在等待制作队列...' });
+      updateStep('review', { status: 'running', progress: 35, href: `/videos/${activeProjectId}`, detail: '重新渲染中，完成后可继续修改。' });
+      const response = await fetch(`/api/videos/${activeProjectId}/render-retry`, { method: 'POST' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || '重新提交渲染失败');
+      await pollRender(activeProjectId);
+      setMessage('已重新提交渲染。');
+    } catch (error) {
+      const text = compactError(error);
+      updateStep('render', { status: 'failed', progress: 100, href: `/videos/${activeProjectId}`, detail: text });
+      updateStep('review', { status: 'waiting', progress: 70, href: `/videos/${activeProjectId}`, detail: '打开视频详情检查失败原因后继续修改。' });
+      setMessage(text);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function ensureNotStopped() {
+    if (stopRequestedRef.current) {
+      throw new Error('已停止生成');
+    }
+  }
+
+  async function stopGeneration() {
+    stopRequestedRef.current = true;
+    setBackgroundRequested(false);
+    backgroundRequestedRef.current = false;
+
+    if (!busy) {
+      setMessage('当前没有正在生成的任务。');
+      return;
+    }
+
+    if (activeProjectId) {
+      setMessage('正在停止当前生成任务...');
+      try {
+        const response = await fetch(`/api/videos/${activeProjectId}/render-job/cancel`, { method: 'POST' });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || '停止生成失败');
+        updateStep('render', { status: 'failed', progress: 100, href: `/videos/${activeProjectId}`, detail: '已停止生成。' });
+        updateStep('review', { status: 'failed', progress: 100, href: `/videos/${activeProjectId}`, detail: '可以打开视频详情重新渲染或删除。' });
+        setMessage('已停止当前视频生成。');
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : '停止生成失败');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    setSteps((current) => current.map((step) => step.status === 'running' ? { ...step, status: 'failed', progress: 100, detail: '已停止生成' } : step));
+    setMessage('已停止当前生成流程。已经完成的文档或脚本会保留在对应页面。');
+    setBusy(false);
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 18 }}>
+      <section style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.15fr 0.85fr', gap: 16, alignItems: 'stretch' }}>
+        <StepCard refProp={voiceSectionRef} step="1" title="选择旁白音色" badge={<StatusBadge text={selectedVoice ? '已选择' : '未选择'} tone={selectedVoice ? 'success' : 'warning'} />}>
+          <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.7 }}>从我的素材中选择一个复刻完成的声音。上传和复刻新声音请到“我的素材”。</p>
+          {readyVoices.length ? (
+            <select value={selectedVoiceId} onChange={(event) => setSelectedVoiceId(event.target.value)} style={inputStyle}>
+              {readyVoices.map((voice) => <option key={voice.id} value={voice.id}>{voice.name} · {providerLabel(voice.provider)}</option>)}
+            </select>
+          ) : (
+            <div style={{ ...subtlePanelStyle, padding: 12, color: '#fbbf24', lineHeight: 1.6 }}>还没有复刻完成的音色。</div>
+          )}
+          {selectedVoice ? <div style={{ ...subtlePanelStyle, padding: 12, display: 'grid', gap: 6 }}><strong>{selectedVoice.name}</strong><span style={{ color: '#94a3b8' }}>服务：{providerLabel(selectedVoice.provider)}</span></div> : null}
+          <Link href="/assets" {...newWindowLinkProps} style={linkButtonStyle('secondary')}>去我的素材管理音色</Link>
+        </StepCard>
+
+        <StepCard refProp={documentSectionRef} step="2" title="上传文档或粘贴文本">
+          <div
+            onDragOver={(event) => { event.preventDefault(); setDragActive(true); }}
+            onDragLeave={() => setDragActive(false)}
+            onDrop={(event) => { event.preventDefault(); setDragActive(false); addFiles(event.dataTransfer.files); }}
+            style={{ borderRadius: 12, border: `1px dashed ${dragActive ? '#38bdf8' : '#475569'}`, background: dragActive ? '#082f49' : '#0f141d', minHeight: 126, display: 'grid', placeItems: 'center', textAlign: 'center', padding: 16 }}
+          >
+            <div style={{ display: 'grid', gap: 8 }}>
+              <strong>拖拽文档到这里</strong>
+              <span style={{ color: '#94a3b8' }}>支持 docx / txt / md / html</span>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button type="button" onClick={() => fileInputRef.current?.click()} style={secondaryButtonStyle}>选择文件</button>
+                <button type="button" onClick={() => folderInputRef.current?.click()} style={secondaryButtonStyle}>选择文件夹</button>
+              </div>
+            </div>
+          </div>
+          <input ref={fileInputRef} type="file" accept=".docx,.txt,.md,.html" multiple onChange={(event) => event.target.files && addFiles(event.target.files)} style={{ display: 'none' }} />
+          <input ref={folderInputRef} type="file" multiple onChange={(event) => event.target.files && addFiles(event.target.files)} style={{ display: 'none' }} {...({ webkitdirectory: '', directory: '' } as Record<string, string>)} />
+          {documents.length ? <div style={{ ...subtlePanelStyle, padding: 10, display: 'grid', gap: 5 }}>{documents.slice(0, 4).map((file) => <span key={`${file.name}-${file.size}`} style={{ color: '#cbd5e1', fontSize: 13 }}>{file.name}</span>)}{documents.length > 4 ? <span style={{ color: '#94a3b8', fontSize: 13 }}>还有 {documents.length - 4} 个文件</span> : null}<button type="button" onClick={() => setDocuments([])} style={{ ...secondaryButtonStyle, width: 'fit-content' }}>清空文件</button></div> : null}
+          <input value={pastedTitle} onChange={(event) => setPastedTitle(event.target.value)} placeholder="粘贴文本标题" style={inputStyle} />
+          <textarea value={pastedText} onChange={(event) => setPastedText(event.target.value)} placeholder="也可以直接把文档内容复制粘贴到这里..." style={{ ...inputStyle, minHeight: 96, resize: 'vertical', lineHeight: 1.6 }} />
+        </StepCard>
+
+        <StepCard refProp={generateSectionRef} step="3" title="生成视频" badge={<StatusBadge text="智能讲解模板" tone="info" />}>
+          <div style={{ ...subtlePanelStyle, padding: 12, display: 'grid', gap: 8 }}>
+            <strong>画面比例</strong>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <button type="button" onClick={() => setAspectRatio('9:16')} style={ratioButtonStyle(aspectRatio === '9:16')}>竖屏 9:16</button>
+              <button type="button" onClick={() => setAspectRatio('16:9')} style={ratioButtonStyle(aspectRatio === '16:9')}>横屏 16:9</button>
+            </div>
+            <span style={{ color: '#94a3b8', lineHeight: 1.6 }}>智能讲解模板，适合教程、产品介绍、培训资料和方法论文档。</span>
+          </div>
+          <label style={checkStyle}>
+            <input type="checkbox" checked={autoRender} onChange={(event) => setAutoRender(event.target.checked)} />
+            创建后自动生成成片
+          </label>
+          <div style={{ ...subtlePanelStyle, padding: 12, display: 'grid', gap: 8 }}>
+            <strong>预计时长</strong>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <EstimateMini label="成片" value={hasDocumentInput ? estimate.estimatedVideoDuration : '待添加文档'} />
+              <EstimateMini label="生成耗时" value={hasDocumentInput ? estimate.estimatedGenerationRange : '待添加文档'} />
+            </div>
+            <span style={{ color: '#94a3b8', lineHeight: 1.6 }}>估算会根据文本长度、文件大小、镜头数量和当前并发设置自动变化。</span>
+          </div>
+          <button type="button" onClick={generateVideo} disabled={!canGenerate} style={{ ...primaryButtonStyle, width: '100%' }}>{busy ? '正在生成...' : '开始生成视频'}</button>
+          <button
+            type="button"
+            onClick={stopGeneration}
+            disabled={!busy}
+            style={{
+              ...secondaryButtonStyle,
+              width: '100%',
+              borderColor: busy ? '#854d0e' : '#334155',
+              color: busy ? '#fde68a' : '#64748b',
+              cursor: busy ? 'pointer' : 'not-allowed',
+              opacity: busy ? 1 : 0.72
+            }}
+          >
+            停止生成
+          </button>
+          <button
+            type="button"
+            onClick={moveCurrentTaskToBackground}
+            disabled={!busy || !autoRender || backgroundRequested}
+            style={{
+              ...secondaryButtonStyle,
+              width: '100%',
+              borderColor: busy && autoRender ? '#38bdf8' : '#334155',
+              color: busy && autoRender ? '#e0f2fe' : '#64748b',
+              cursor: busy && autoRender && !backgroundRequested ? 'pointer' : 'not-allowed'
+            }}
+          >
+            {backgroundRequested ? '已转入后台，可开始下一条' : busy && autoRender ? '转入后台，开始下一条' : '转入后台，开始下一条'}
+          </button>
+          <span style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.5 }}>{busy && autoRender ? '当前任务会继续制作，首页会释放出来。' : '开始生成后，这个按钮会变为可用。'}</span>
+          <span style={{ color: canGenerate ? '#86efac' : '#fbbf24', fontSize: 13, lineHeight: 1.5 }}>{canGenerate ? '已准备好开始制作。' : '请先选择音色并添加文档。'}</span>
+        </StepCard>
+      </section>
+
+      {message ? <div style={{ borderRadius: 10, border: '1px solid #334155', background: '#111823', color: '#dbeafe', padding: 14, lineHeight: 1.7 }}>{message}</div> : null}
+
+      {pendingScript ? (
+        <section style={{ borderRadius: 12, border: '1px solid #854d0e', background: '#17130a', padding: 18, display: 'grid', gap: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start', flexWrap: 'wrap' }}>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <h2 style={{ margin: 0, fontSize: 21 }}>确认镜头拆解</h2>
+              <p style={{ margin: 0, color: '#fcd34d', lineHeight: 1.7 }}>已根据脚本文案拆成 {pendingScript.shots.length} 个镜头。确认后才会创建视频项目并继续生成。</p>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Link href={pendingScript.href} {...newWindowLinkProps} style={linkButtonStyle('secondary')}>打开脚本详情</Link>
+              <button type="button" onClick={confirmScriptAndContinue} disabled={busy} style={{ ...primaryButtonStyle, minWidth: 190 }}>
+                {busy ? '继续中...' : '确认镜头并继续生成'}
+              </button>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gap: 10, maxHeight: 560, overflow: 'auto', paddingRight: 4 }}>
+            {pendingScript.shots.map((shot) => (
+              <div key={shot.order} style={{ borderRadius: 10, border: '1px solid #3f3215', background: '#111823', padding: 13, display: 'grid', gridTemplateColumns: '34px minmax(0, 1fr) 88px', gap: 12, alignItems: 'start' }}>
+                <div style={{ width: 30, height: 30, borderRadius: 8, background: '#0f172a', color: '#fde68a', display: 'grid', placeItems: 'center', fontWeight: 800 }}>{shot.order}</div>
+                <div style={{ display: 'grid', gap: 6, minWidth: 0 }}>
+                  <strong style={{ color: '#f8fafc', lineHeight: 1.45 }}>{shot.title}</strong>
+                  <span style={{ color: '#cbd5e1', lineHeight: 1.65 }}>旁白：{shot.voiceover}</span>
+                  <span style={{ color: '#94a3b8', lineHeight: 1.55 }}>字幕：{shot.subtitle}</span>
+                  <span style={{ color: '#7dd3fc', lineHeight: 1.55 }}>画面：{shot.visualPrompt}</span>
+                </div>
+                <div style={{ display: 'grid', gap: 7, justifyItems: 'end' }}>
+                  <StatusBadge text={shot.order === 1 ? '开场' : shot.order === pendingScript.shots.length ? '结尾' : '镜头'} tone={shot.order === 1 ? 'info' : shot.order === pendingScript.shots.length ? 'warning' : 'neutral'} />
+                  <span style={{ color: '#cbd5e1', fontWeight: 800 }}>{shot.durationSec}s</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <section style={{ borderRadius: 12, border: '1px solid #263244', background: '#151b26', padding: 18, display: 'grid', gap: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'grid', gap: 6 }}>
+            <h2 style={{ margin: 0, fontSize: 21 }}>生产进度</h2>
+            <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.7 }}>
+              每一步都会显示状态；预计成片 {hasDocumentInput ? estimate.estimatedVideoDuration : '待计算'}，预计{busy ? '剩余' : '生成'} {hasDocumentInput ? remainingEstimate : '待计算'}。
+            </p>
+          </div>
+          <div style={{ minWidth: 220, display: 'grid', gap: 7 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, color: '#cbd5e1', fontSize: 13 }}><span>总进度</span><strong>{totalProgress}%</strong></div>
+            <ProgressBar value={totalProgress} />
+          </div>
+          <button type="button" onClick={resetSteps} style={secondaryButtonStyle}>重置状态</button>
+        </div>
+        {hasDocumentInput ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 8 }}>
+            {estimate.steps.map((item) => <EstimateMini key={item.id} label={item.title} value={item.range} />)}
+          </div>
+        ) : null}
+        <div style={{ display: 'grid', gap: 10 }}>
+          {steps.map((step, index) => (
+            <div key={step.id} style={{ borderRadius: 10, border: '1px solid #243042', background: '#111823', padding: 13, display: 'grid', gridTemplateColumns: '34px 1fr auto', gap: 12, alignItems: 'center' }}>
+              <div style={{ width: 30, height: 30, borderRadius: 8, background: '#0f172a', color: '#7dd3fc', display: 'grid', placeItems: 'center', fontWeight: 800 }}>{index + 1}</div>
+              <div style={{ display: 'grid', gap: 5 }}>
+                <strong>{step.title}</strong>
+                <span style={{ color: '#94a3b8', lineHeight: 1.5 }}>{step.detail || step.desc}</span>
+                <ProgressBar value={step.progress} />
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {step.href ? <Link href={step.href} {...newWindowLinkProps} style={linkButtonStyle('secondary')}>打开</Link> : <button type="button" onClick={() => handleStepAction(step.id)} style={secondaryButtonStyle}>{step.id === 'voice' ? '选音色' : step.id === 'import' ? '加文档' : step.id === 'render' || step.id === 'review' ? '看视频库' : '查看'}</button>}
+                {(step.id === 'render' || step.id === 'review') && step.status === 'failed' && activeProjectId ? <button type="button" onClick={retryActiveRender} disabled={busy} style={secondaryButtonStyle}>重试</button> : null}
+                <StatusBadge text={statusText(step.status)} tone={statusTone(step.status)} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+
+  function handleStepAction(id: string) {
+    if (id === 'voice') {
+      voiceSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (id === 'import' || id === 'parse') {
+      documentSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (id === 'project') {
+      generateSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    window.open(activeProjectId ? `/videos/${activeProjectId}` : '/videos', '_blank', 'noopener,noreferrer');
+  }
+}
+
+function EstimateMini({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ borderRadius: 10, border: '1px solid #243042', background: '#0f141d', padding: 10, display: 'grid', gap: 5, minWidth: 0 }}>
+      <span style={{ color: '#7f8da3', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+      <strong style={{ color: '#dbeafe', fontSize: 13, lineHeight: 1.4 }}>{value}</strong>
+    </div>
+  );
+}
+
+function StepCard({ refProp, step, title, badge, children }: { refProp?: React.RefObject<HTMLElement>; step: string; title: string; badge?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section ref={refProp} style={{ borderRadius: 12, border: '1px solid #263244', background: '#151b26', padding: 18, display: 'grid', gap: 14, alignContent: 'start' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <span style={{ width: 30, height: 30, borderRadius: 8, display: 'grid', placeItems: 'center', background: '#082f49', color: '#7dd3fc', fontWeight: 800 }}>{step}</span>
+          <h2 style={{ margin: 0, fontSize: 19 }}>{title}</h2>
+        </div>
+        {badge}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function ProgressBar({ value }: { value: number }) {
+  return (
+    <div style={{ height: 7, borderRadius: 999, background: '#0f172a', overflow: 'hidden', border: '1px solid #243042' }}>
+      <div style={{ width: `${Math.max(0, Math.min(100, value))}%`, height: '100%', borderRadius: 999, background: value >= 100 ? '#34d399' : '#38bdf8', transition: 'width 260ms ease' }} />
+    </div>
+  );
+}
+
+function ratioButtonStyle(active: boolean) {
+  return {
+    border: active ? '1px solid #38bdf8' : '1px solid #334155',
+    borderRadius: 10,
+    background: active ? '#082f49' : '#0f141d',
+    color: active ? '#7dd3fc' : '#cbd5e1',
+    padding: '10px 12px',
+    fontWeight: 800,
+    cursor: 'pointer'
+  } as const;
+}
+
+const inputStyle = {
+  width: '100%',
+  boxSizing: 'border-box',
+  border: '1px solid #334155',
+  borderRadius: 10,
+  background: '#0f141d',
+  color: '#f8fafc',
+  padding: '11px 12px',
+  outline: 'none'
+} as const;
+
+const checkStyle = {
+  display: 'flex',
+  gap: 8,
+  alignItems: 'center',
+  color: '#cbd5e1',
+  fontSize: 13,
+  lineHeight: 1.5
+} as const;

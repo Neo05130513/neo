@@ -1,0 +1,10 @@
+.env.local
+.env
+public/generated/
+data/imports/
+data/*.sqlite
+node_modules/
+.next/
+dist/
+.DS_Store
+*.tgz

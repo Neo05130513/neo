@@ -1,0 +1,30 @@
+[
+  {
+    "id": "voice_profile_1776852032356_c01r5d",
+    "userId": "user_admin_demo",
+    "name": "Neo音色",
+    "provider": "aliyun-cosyvoice",
+    "status": "ready",
+    "samplePath": "/generated/voices/user_admin_demo/voice_profile_1776852032356_c01r5d/sample-cosyvoice.wav",
+    "isDefault": true,
+    "createdAt": "2026-04-22T10:00:32.358Z",
+    "updatedAt": "2026-04-22T16:00:15.581Z",
+    "sampleObjectKey": "video-factory/voice-samples/user_admin_demo/voice_profile_1776852032356_c01r5d/sample-cosyvoice.wav",
+    "sampleStorageProvider": "aliyun-oss",
+    "providerVoiceId": "cosyvoice-v2-videof1r5d-2c71d765e21343a0b3b2aa74be5bea55"
+  },
+  {
+    "id": "voice_profile_cosyvoice_real_sample",
+    "userId": "user_video_demo",
+    "name": "CosyVoice 真实样音",
+    "provider": "aliyun-cosyvoice",
+    "status": "ready",
+    "samplePath": "/generated/remotion/cosyvoice-clone-test/sample-cosyvoice.wav",
+    "sampleObjectKey": "video-factory/voice-samples/_clone-test/sample-1776832567837.wav",
+    "sampleStorageProvider": "aliyun-oss",
+    "providerVoiceId": "cosyvoice-v2-vf9020-2a2879ae53b84f7cb713f12617b6cc3e",
+    "isDefault": true,
+    "createdAt": "2026-04-22T06:10:00.000Z",
+    "updatedAt": "2026-04-22T06:10:00.000Z"
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "provider": "aliyun-cosyvoice",
+  "dashscopeBaseUrl": "https://dashscope.aliyuncs.com",
+  "cosyvoiceModel": "cosyvoice-v2",
+  "cosyvoiceCloneModel": "voice-enrollment",
+  "cosyvoiceTestVoiceId": "longxiaochun_v2",
+  "cosyvoiceVoicePrefix": "videofactory",
+  "cosyvoiceChunkCharLimit": 1800,
+  "aliyunOssPrefix": "video-factory/voice-samples",
+  "aliyunOssSignedUrlExpiresSec": 3600,
+  "minimaxBaseUrl": "https://api.minimaxi.com",
+  "minimaxTtsModel": "speech-2.8-hd",
+  "minimaxCloneModel": "speech-2.8-hd",
+  "minimaxLanguageBoost": "Chinese",
+  "minimaxVoicePrefix": "VideoFactory",
+  "updatedAt": "2026-04-21T00:00:00.000Z"
+}

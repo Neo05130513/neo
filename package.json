@@ -1,0 +1,91 @@
+{
+  "name": "video-factory",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22 <25",
+    "npm": ">=10"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "node scripts/build-next.js",
+    "start": "next start",
+    "desktop": "electron electron/main.cjs",
+    "package:win": "node scripts/package-windows.js",
+    "lint": "next lint",
+    "remotion:preview": "remotion preview remotion/index.tsx",
+    "remotion:render": "remotion render remotion/index.tsx TutorialDemo public/generated/remotion/manual-output.mp4",
+    "db:seed": "node --experimental-strip-types ./scripts/seed-db.ts"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.450",
+    "@remotion/cli": "4.0.450",
+    "@remotion/renderer": "4.0.450",
+    "ali-oss": "^6.23.0",
+    "mammoth": "1.8.0",
+    "next": "14.2.15",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.450",
+    "undici": "^7.24.7"
+  },
+  "overrides": {
+    "@remotion/compositor-darwin-x64": "4.0.450",
+    "@remotion/licensing": "4.0.450",
+    "@remotion/media-parser": "4.0.450",
+    "@remotion/media-utils": "4.0.450",
+    "@remotion/player": "4.0.450",
+    "@remotion/streaming": "4.0.450",
+    "@remotion/studio": "4.0.450",
+    "@remotion/studio-server": "4.0.450",
+    "@remotion/studio-shared": "4.0.450",
+    "@remotion/web-renderer": "4.0.450",
+    "@remotion/zod-types": "4.0.450"
+  },
+  "devDependencies": {
+    "@types/node": "22.7.4",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "electron": "^35.7.5",
+    "electron-builder": "^26.0.12",
+    "tsx": "^4.21.0",
+    "typescript": "5.6.2"
+  },
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "com.local.video-factory",
+    "productName": "Video Factory",
+    "directories": {
+      "output": "dist/windows"
+    },
+    "asar": false,
+    "files": [
+      "app/**/*",
+      "electron/**/*",
+      "lib/**/*",
+      "remotion/**/*",
+      "scripts/build-next.js",
+      "public/**/*",
+      "data/**/*.json",
+      ".next/**/*",
+      "next.config.js",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.cjs"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    }
+  },
+  "optionalDependencies": {
+    "@esbuild/win32-x64": "^0.25.0",
+    "@next/swc-win32-x64-msvc": "^14.2.15",
+    "@remotion/compositor-win32-x64-msvc": "^4.0.450",
+    "@rspack/binding-win32-x64-msvc": "^1.7.6"
+  }
+}
