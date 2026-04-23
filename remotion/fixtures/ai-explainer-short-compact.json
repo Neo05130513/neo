@@ -1,0 +1,50 @@
+{
+  "project": {
+    "id": "fixture_ai_explainer_compact",
+    "title": "30 秒讲清 AI 工作流",
+    "template": "ai-explainer-short-v1",
+    "aspectRatio": "9:16",
+    "visualPreset": "midnight-cyan"
+  },
+  "scenes": [
+    {
+      "id": "compact_scene_1",
+      "order": 1,
+      "shotType": "title",
+      "visualType": "slide",
+      "visualPrompt": "极短 AI 教程开场，强调一句话讲清工作流。",
+      "voiceover": "一条 AI 工作流，只需要先跑通三件事。",
+      "subtitle": "三件事跑通工作流",
+      "durationSec": 3,
+      "headline": "AI 工作流",
+      "emphasis": "三件事",
+      "keywords": ["脚本", "模板", "渲染"]
+    },
+    {
+      "id": "compact_scene_2",
+      "order": 2,
+      "shotType": "step",
+      "visualType": "screen",
+      "visualPrompt": "用三段式流程展示脚本、模板、渲染。",
+      "voiceover": "先写脚本，再套模板，最后看渲染结果。",
+      "subtitle": "脚本、模板、渲染",
+      "durationSec": 5,
+      "layout": "process",
+      "cards": ["脚本", "模板", "渲染"],
+      "keywords": ["流程", "复用", "检查"]
+    },
+    {
+      "id": "compact_scene_3",
+      "order": 3,
+      "shotType": "cta",
+      "visualType": "slide",
+      "visualPrompt": "短促结尾，强调先保存流程。",
+      "voiceover": "把这条链路保存下来，下次直接复用。",
+      "subtitle": "保存链路，下次复用",
+      "durationSec": 4,
+      "headline": "下一条视频",
+      "emphasis": "直接复用",
+      "keywords": ["保存", "复用", "提速"]
+    }
+  ]
+}

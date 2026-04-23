@@ -1,0 +1,103 @@
+{
+  "project": {
+    "id": "fixture_ai_explainer_longform",
+    "title": "从混乱需求到稳定交付的 AI 短视频自动化生产系统",
+    "template": "ai-explainer-short-v1",
+    "aspectRatio": "9:16",
+    "visualPreset": "sunset-amber"
+  },
+  "scenes": [
+    {
+      "id": "longform_scene_1",
+      "order": 1,
+      "shotType": "title",
+      "visualType": "slide",
+      "visualPrompt": "长标题开场，展示从混乱需求到稳定交付的转变。",
+      "voiceover": "如果你的短视频生产总是卡在需求、脚本、素材和渲染之间，问题可能不是执行力，而是系统没有被固定下来。",
+      "subtitle": "不是执行力问题，而是系统没有固定",
+      "durationSec": 7,
+      "headline": "从混乱需求到稳定交付",
+      "emphasis": "AI 短视频自动化生产系统",
+      "keywords": ["需求", "脚本", "素材", "渲染"]
+    },
+    {
+      "id": "longform_scene_2",
+      "order": 2,
+      "shotType": "pain",
+      "visualType": "caption",
+      "visualPrompt": "展示创作者在多个工具和反馈之间来回切换。",
+      "voiceover": "最常见的断点，是选题没有评分标准，脚本没有复用结构，分镜没有稳定模板，渲染失败也不知道卡在哪一步。",
+      "subtitle": "选题、脚本、分镜、渲染，每一步都可能断",
+      "durationSec": 8,
+      "headline": "四个断点",
+      "emphasis": "每一步都可能返工",
+      "cards": ["选题缺少评分标准", "脚本没有复用结构", "分镜依赖临场判断", "渲染失败难以定位"],
+      "keywords": ["评分", "结构", "模板", "定位"]
+    },
+    {
+      "id": "longform_scene_3",
+      "order": 3,
+      "shotType": "step",
+      "visualType": "screen",
+      "visualPrompt": "第一步，用输入规范把需求变成可计算的数据。",
+      "voiceover": "第一步，把需求写成固定字段：目标受众、平台、时长、角度、风险和必须出现的行动号召。",
+      "subtitle": "先把需求写成固定字段",
+      "durationSec": 7,
+      "layout": "checklist",
+      "cards": ["目标受众", "平台和时长", "内容角度", "风险和 CTA"],
+      "keywords": ["字段", "约束", "输入"]
+    },
+    {
+      "id": "longform_scene_4",
+      "order": 4,
+      "shotType": "step",
+      "visualType": "screen",
+      "visualPrompt": "第二步，脚本和分镜自动生成，并保留人工复核入口。",
+      "voiceover": "第二步，让系统生成脚本和分镜，但保留复核入口，确保节奏、观点和字幕都能被人工检查。",
+      "subtitle": "自动生成，但保留人工复核入口",
+      "durationSec": 7,
+      "layout": "process",
+      "cards": ["生成脚本", "拆分镜头", "检查字幕", "确认节奏"],
+      "keywords": ["复核", "节奏", "字幕"]
+    },
+    {
+      "id": "longform_scene_5",
+      "order": 5,
+      "shotType": "step",
+      "visualType": "screen",
+      "visualPrompt": "第三步，用 Remotion 模板预览和渲染结果。",
+      "voiceover": "第三步，把分镜输入 Remotion 模板，先在项目页预览，再用 Studio 调细节，最后进入正式渲染。",
+      "subtitle": "项目页预览，Studio 调细节，最后正式渲染",
+      "durationSec": 8,
+      "layout": "timeline",
+      "cards": ["项目页预览", "Studio 调试", "正式渲染", "输出 MP4"],
+      "keywords": ["Remotion", "预览", "Studio", "MP4"]
+    },
+    {
+      "id": "longform_scene_6",
+      "order": 6,
+      "shotType": "result",
+      "visualType": "image",
+      "visualPrompt": "展示质量和效率随系统稳定而提升。",
+      "voiceover": "当每个环节都有状态和进度，团队就能知道问题发生在哪里，也能持续优化最慢的一步。",
+      "subtitle": "有状态、有进度，才能持续优化",
+      "durationSec": 7,
+      "layout": "chart",
+      "chartData": [22, 38, 57, 73, 91],
+      "keywords": ["状态", "进度", "优化"]
+    },
+    {
+      "id": "longform_scene_7",
+      "order": 7,
+      "shotType": "cta",
+      "visualType": "slide",
+      "visualPrompt": "结尾强调先稳定一条链路，再增加云端渲染和更多模板。",
+      "voiceover": "所以先别急着堆功能，先把一条链路跑稳定，再加入更多模板、云端渲染和发布协作。",
+      "subtitle": "先稳定链路，再扩展模板和云端渲染",
+      "durationSec": 6,
+      "headline": "下一步",
+      "emphasis": "先稳定，再扩展",
+      "keywords": ["链路", "模板", "云端", "协作"]
+    }
+  ]
+}
