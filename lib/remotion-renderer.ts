@@ -8,6 +8,16 @@ import { generatedRelativePath, publicPathFromRelative, resolveAppPath } from '.
 import type { Script, Topic, Tutorial, VideoAsset, VideoProject, VideoScene } from './types';
 import type { RemotionVideoInput } from '@/remotion/types';
 
+export type RemotionRenderProgress = {
+  stage: string;
+  progress: number;
+  detail?: string;
+};
+
+type RenderOptions = {
+  onProgress?: (progress: RemotionRenderProgress) => void | Promise<void>;
+};
+
 function getCompositionId(template: string) {
   if (template === 'tech-explainer-v1') return 'TechExplainer';
   if (template === 'ai-explainer-short-v1') return 'AiExplainerShort';
@@ -103,16 +113,23 @@ async function prepareSceneAudio(params: {
   projectId: string;
   scenes: VideoScene[];
   existingAssets: VideoAsset[];
+  onProgress?: RenderOptions['onProgress'];
 }) {
   const profile = await getDefaultVoiceProfile();
   const audioBySceneId = new Map<string, { publicPath: string; durationSec: number }>();
   const createdAssets: VideoAsset[] = [];
 
   if (!profile) {
+    await params.onProgress?.({ stage: 'audio-skipped', progress: 34, detail: 'No default voice profile; rendering with visual timing only.' });
     return { audioBySceneId, createdAssets, scenes: params.scenes };
   }
 
-  for (const scene of params.scenes) {
+  for (const [index, scene] of params.scenes.entries()) {
+    await params.onProgress?.({
+      stage: 'audio-generating',
+      progress: 24 + Math.round((index / Math.max(1, params.scenes.length)) * 18),
+      detail: `Generating voiceover ${index + 1}/${params.scenes.length}`
+    });
     const generated = await generateSceneVoiceAudio({
       profile,
       projectId: params.projectId,
@@ -135,6 +152,7 @@ async function prepareSceneAudio(params: {
     });
   }
 
+  await params.onProgress?.({ stage: 'audio-ready', progress: 44, detail: 'Voiceover timing is ready.' });
   const scenes = params.scenes.map((scene) => {
     const audio = audioBySceneId.get(scene.id);
     if (!audio) return scene;
@@ -147,7 +165,8 @@ async function prepareSceneAudio(params: {
   return { audioBySceneId, createdAssets, scenes };
 }
 
-export async function renderVideoProjectWithRemotion(projectId: string) {
+export async function renderVideoProjectWithRemotion(projectId: string, options: RenderOptions = {}) {
+  await options.onProgress?.({ stage: 'loading-project', progress: 20, detail: 'Loading project scenes and assets.' });
   const state = await readVideoState();
   const projectIndex = state.projects.findIndex((item) => item.id === projectId);
   if (projectIndex === -1) throw new Error('Video project not found');
@@ -169,14 +188,17 @@ export async function renderVideoProjectWithRemotion(projectId: string) {
   };
   state.projects[projectIndex] = renderingProject;
   await writeJsonFile('data/video-projects.json', state.projects);
+  await options.onProgress?.({ stage: 'project-marked-rendering', progress: 24, detail: 'Project entered rendering state.' });
 
   try {
     const preparedAudio = await prepareSceneAudio({
       projectId,
       scenes: projectScenes,
-      existingAssets: state.assets
+      existingAssets: state.assets,
+      onProgress: options.onProgress
     });
     const renderScenes = preparedAudio.scenes;
+    await options.onProgress?.({ stage: 'building-input', progress: 48, detail: 'Building Remotion input and subtitles.' });
     const inputProps = toRemotionInput(renderingProject, renderScenes, preparedAudio.audioBySceneId);
     const outputRelativePath = generatedRelativePath('remotion', projectId, 'output.mp4');
     const inputRelativePath = generatedRelativePath('remotion', projectId, 'input.json');
@@ -187,16 +209,20 @@ export async function renderVideoProjectWithRemotion(projectId: string) {
     await writeTextFile(inputRelativePath, JSON.stringify(inputProps, null, 2) + '\n');
     await writeTextFile(subtitleRelativePath, buildProjectSrt(inputProps.scenes));
 
+    await options.onProgress?.({ stage: 'loading-remotion', progress: 55, detail: 'Loading Remotion renderer modules.' });
     const { bundle, renderMedia, selectComposition } = await loadRemotionModules();
+    await options.onProgress?.({ stage: 'bundling-remotion', progress: 62, detail: 'Bundling Remotion composition.' });
     const serveUrl = await bundle({
       entryPoint: resolveAppPath('remotion/index.tsx')
     });
+    await options.onProgress?.({ stage: 'selecting-composition', progress: 72, detail: 'Selecting video composition.' });
     const composition = await selectComposition({
       serveUrl,
       id: getCompositionId(renderingProject.template),
       inputProps: inputProps as unknown as Record<string, unknown>
     });
 
+    await options.onProgress?.({ stage: 'rendering-media', progress: 80, detail: 'Rendering final MP4.' });
     await renderMedia({
       composition,
       serveUrl,
@@ -205,6 +231,7 @@ export async function renderVideoProjectWithRemotion(projectId: string) {
       inputProps: inputProps as unknown as Record<string, unknown>
     });
 
+    await options.onProgress?.({ stage: 'saving-results', progress: 94, detail: 'Saving video assets and project state.' });
     const publicOutputPath = publicPathFromRelative(outputRelativePath);
     const publicSubtitlePath = publicPathFromRelative(subtitleRelativePath);
     const nextAssets = state.assets.filter((item) => item.projectId !== projectId);
@@ -248,6 +275,7 @@ export async function renderVideoProjectWithRemotion(projectId: string) {
       ])
     ]);
 
+    await options.onProgress?.({ stage: 'completed', progress: 100, detail: 'Render completed.' });
     return {
       project: completedProject,
       scenes: renderScenes,
@@ -257,6 +285,7 @@ export async function renderVideoProjectWithRemotion(projectId: string) {
       inputProps
     };
   } catch (error) {
+    await options.onProgress?.({ stage: 'failed', progress: 100, detail: error instanceof Error ? error.message : 'Remotion render failed' });
     const failedProject = updateProjectFailure(renderingProject, error instanceof Error ? error.message : 'Remotion render failed');
     state.projects[projectIndex] = failedProject;
     await writeJsonFile('data/video-projects.json', state.projects);

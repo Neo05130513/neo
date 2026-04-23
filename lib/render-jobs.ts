@@ -154,7 +154,13 @@ export async function processRenderQueue() {
 
   try {
     await updateJobProgress(nextJob.id, { stage: 'rendering-remotion', progress: 42 });
-    const result = await renderVideoProjectWithRemotion(nextJob.projectId);
+    const result = await renderVideoProjectWithRemotion(nextJob.projectId, {
+      onProgress: (progress) => updateJobProgress(nextJob.id, {
+        stage: progress.stage,
+        progress: progress.progress,
+        error: progress.detail
+      })
+    });
     const latest = (await readJobs()).find((job) => job.id === nextJob.id);
     if (latest?.status === 'cancelled') {
       await markProjectStopped(nextJob.projectId, '用户已停止生成');

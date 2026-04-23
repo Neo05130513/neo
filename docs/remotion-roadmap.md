@@ -109,7 +109,9 @@ Acceptance:
 - Done: queued, low-memory wait, start, render, retry, completed, failed, and cancelled states update progress metadata.
 - Done: progress snapshots prefer real job progress before falling back to asset-count heuristics.
 - Done: `npm run build` and `npx tsc --noEmit` pass after the change.
-- Todo: add finer-grained per-scene progress from inside `renderVideoProjectWithRemotion`.
+- Done: `renderVideoProjectWithRemotion` reports finer-grained stages through an `onProgress` callback.
+- Done: queue render validation completed with `stage: completed` and `progress: 100`.
+- Todo: add true per-scene media progress from Remotion renderer if needed.
 - Todo: add richer render logs if failures remain hard to diagnose.
 
 ## Phase 4: Remotion Studio Workflow
