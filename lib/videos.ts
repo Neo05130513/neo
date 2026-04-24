@@ -117,9 +117,10 @@ function sceneKeywords(text: string, fallback: string[] = []) {
 
 function sceneCards(text: string, maxItems = 4) {
   const parts = text
-    .split(/[。！？；]/)
+    .split(/[。！？；，、]/)
     .map((item) => item.replace(/^\d+[.、]\s*/, '').trim())
-    .filter((item) => item.length >= 3);
+    .map((item) => item.replace(/^(所以|然后|最后|因此|同时|另外|其实|就是|我们|你会发现)/, '').trim())
+    .filter((item) => item.length >= 3 && item.length <= 18);
   if (parts.length) return parts.slice(0, maxItems);
   return text.match(/.{1,12}/g)?.slice(0, maxItems) || [text];
 }

@@ -147,6 +147,22 @@ function metricValue(scene: RemotionSceneInput) {
   return Math.max(...values);
 }
 
+function sceneMotion(scene: RemotionSceneInput, progress: number) {
+  const baseOpacity = interpolate(progress, [0, 0.1, 0.92, 1], [0, 1, 1, 0.82]);
+  switch (scene.transition) {
+    case 'zoom':
+      return { opacity: baseOpacity, transform: `scale(${interpolate(progress, [0, 1], [1.04, 1])})` };
+    case 'push':
+      return { opacity: baseOpacity, transform: `translateX(${interpolate(progress, [0, 1], [48, -18])}px)` };
+    case 'flash':
+      return { opacity: interpolate(progress, [0, 0.08, 0.14, 1], [0, 1, 0.9, 1]), transform: `scale(${interpolate(progress, [0, 1], [0.98, 1])})` };
+    case 'fade':
+      return { opacity: baseOpacity, transform: 'translateX(0px)' };
+    default:
+      return { opacity: baseOpacity, transform: `translateY(${interpolate(progress, [0, 1], [24, -6])}px)` };
+  }
+}
+
 function primaryDisplay(scene: RemotionSceneInput) {
   if (scene.layout === 'hero') return 'hero';
   if (scene.layout === 'chart') return 'data';
@@ -214,6 +230,35 @@ function Background({ palette, progress }: { palette: AiPalette; progress: numbe
         }}
       />
     </AbsoluteFill>
+  );
+}
+
+function AccentWave({ palette, progress }: { palette: AiPalette; progress: number }) {
+  return (
+    <>
+      <div
+        style={{
+          position: 'absolute',
+          left: interpolate(progress, [0, 1], [-260, 1200]),
+          top: 148,
+          width: 280,
+          height: 2,
+          background: `linear-gradient(90deg, transparent, ${palette.accent}, transparent)`,
+          opacity: 0.55
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          right: interpolate(progress, [0, 1], [-220, 980]),
+          bottom: 124,
+          width: 240,
+          height: 2,
+          background: `linear-gradient(90deg, transparent, ${palette.accent2}, transparent)`,
+          opacity: 0.4
+        }}
+      />
+    </>
   );
 }
 
@@ -496,6 +541,7 @@ function ProcessStrip({ scene, palette, enter, layout }: { scene: RemotionSceneI
         <div
           key={`${item}-${index}`}
           style={{
+            position: 'relative',
             display: 'grid',
             gridTemplateColumns: isWide ? '1fr' : '92px 1fr',
             gridTemplateRows: isWide ? '92px 1fr auto' : undefined,
@@ -503,6 +549,33 @@ function ProcessStrip({ scene, palette, enter, layout }: { scene: RemotionSceneI
             gap: 16
           }}
         >
+          {isWide && index < items.length - 1 ? (
+            <div
+              style={{
+                position: 'absolute',
+                right: -26,
+                top: 178,
+                width: 48,
+                height: 2,
+                background: `linear-gradient(90deg, ${palette.accent}, ${palette.positive})`,
+                opacity: 0.9
+              }}
+            />
+          ) : null}
+          {isWide && index < items.length - 1 ? (
+            <div
+              style={{
+                position: 'absolute',
+                right: -2,
+                top: 172,
+                width: 14,
+                height: 14,
+                borderTop: `2px solid ${palette.positive}`,
+                borderRight: `2px solid ${palette.positive}`,
+                transform: 'rotate(45deg)'
+              }}
+            />
+          ) : null}
           <div
             style={{
               display: 'grid',
@@ -649,10 +722,35 @@ function DataPanel({ scene, palette, enter, progress, layout }: { scene: Remotio
         style={{
           padding: isWide ? 34 : 30,
           border: `1px solid ${palette.line}`,
-          background: palette.surfaceStrong
+          background: palette.surfaceStrong,
+          position: 'relative',
+          overflow: 'hidden'
         }}
       >
         <div style={{ color: palette.muted, fontSize: 24, fontWeight: 850 }}>Signal change</div>
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          style={{
+            position: 'absolute',
+            inset: isWide ? '120px 34px 56px 34px' : '110px 20px 54px 20px',
+            width: 'auto',
+            height: 'auto',
+            opacity: 0.28,
+            pointerEvents: 'none'
+          }}
+        >
+          <polyline
+            fill="none"
+            stroke={palette.accent}
+            strokeWidth="1.8"
+            points={chartValues(scene, 5).map((value, index, arr) => `${index * (100 / (arr.length - 1))},${100 - value}`).join(' ')}
+            style={{
+              strokeDasharray: 180,
+              strokeDashoffset: interpolate(progress, [0, 1], [180, 0])
+            }}
+          />
+        </svg>
         <div style={{ display: 'flex', height: isWide ? 470 : 360, gap: 22, alignItems: 'end', marginTop: 34 }}>
           {values.map((value, index) => (
             <div key={`${value}-${index}`} style={{ flex: 1, display: 'grid', gap: 12 }}>
@@ -720,9 +818,24 @@ function ContrastPanel({ scene, palette, enter, layout }: { scene: RemotionScene
               border: `1px solid ${palette.line}`,
               background: index === 0 ? `${palette.alert}18` : `${palette.accent}14`,
               color: palette.text,
-              transform: `translateX(${interpolate(enter, [0, 1], [28 + index * 12, 0])}px)`
+              transform: `translateX(${interpolate(enter, [0, 1], [28 + index * 12, 0])}px)`,
+              position: 'relative',
+              overflow: 'hidden'
             }}
           >
+            <div
+              style={{
+                position: 'absolute',
+                right: 16,
+                top: 10,
+                fontSize: 54,
+                lineHeight: 1,
+                fontWeight: 980,
+                color: index === 0 ? 'rgba(251,191,36,0.22)' : 'rgba(45,212,191,0.2)'
+              }}
+            >
+              {index === 0 ? '!' : '+'}
+            </div>
             <div style={{ color: index === 0 ? palette.alert : palette.accent, fontSize: 20, fontWeight: 900 }}>
               {index === 0 ? '问题点' : '解决线索'}
             </div>
@@ -866,20 +979,34 @@ function NetworkPanel({ scene, palette, enter, progress, layout }: { scene: Remo
   return (
     <div style={{ position: 'absolute', inset: 0, opacity: enter }}>
       {nodes.slice(0, items.length).map((node, index) => (
-        <div
-          key={`line-${index}`}
-          style={{
-            position: 'absolute',
-            left: isWide ? 760 : 240,
-            top: isWide ? 392 : 420,
-            width: isWide ? Math.abs(node.left - 760) : Math.abs(node.left - 240),
-            height: 2,
-            background: `linear-gradient(90deg, ${palette.accent}, ${palette.accent2})`,
-            transformOrigin: 'left center',
-            transform: `rotate(${Math.atan2(node.top - (isWide ? 392 : 420), node.left - (isWide ? 760 : 240))}rad) scaleX(${0.7 + progress * 0.3})`,
-            opacity: 0.55
-          }}
-        />
+        <React.Fragment key={`line-${index}`}>
+          <div
+            style={{
+              position: 'absolute',
+              left: isWide ? 760 : 240,
+              top: isWide ? 392 : 420,
+              width: isWide ? Math.abs(node.left - 760) : Math.abs(node.left - 240),
+              height: 2,
+              background: `linear-gradient(90deg, ${palette.accent}, ${palette.accent2})`,
+              transformOrigin: 'left center',
+              transform: `rotate(${Math.atan2(node.top - (isWide ? 392 : 420), node.left - (isWide ? 760 : 240))}rad) scaleX(${0.7 + progress * 0.3})`,
+              opacity: 0.55
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              left: interpolate(progress, [0, 1], [isWide ? 760 : 240, node.left]),
+              top: interpolate(progress, [0, 1], [isWide ? 392 : 420, node.top]),
+              width: 10,
+              height: 10,
+              borderRadius: 999,
+              background: palette.positive,
+              boxShadow: `0 0 12px ${palette.positive}`,
+              transform: 'translate(-50%, -50%)'
+            }}
+          />
+        </React.Fragment>
       ))}
       <div
         style={{
@@ -1198,10 +1325,12 @@ function SceneVisual({
   const progress = localProgress(frame, duration);
   const enter = Math.max(0.72, spring({ frame, fps, config: { damping: 18, stiffness: 90, mass: 0.9 } }));
   const displayMode = primaryDisplay(scene);
+  const motion = sceneMotion(scene, progress);
 
   return (
-    <AbsoluteFill>
+    <AbsoluteFill style={{ opacity: motion.opacity, transform: motion.transform }}>
       <Background palette={palette} progress={progress} />
+      <AccentWave palette={palette} progress={progress} />
       <Header input={input} scene={scene} sceneIndex={sceneIndex} sceneCount={sceneCount} palette={palette} enter={enter} layout={layout} />
       {displayMode === 'hero' ? <HeroPanel scene={scene} palette={palette} enter={enter} layout={layout} /> : null}
       {displayMode === 'cards' ? <InsightCards scene={scene} palette={palette} enter={enter} layout={layout} /> : null}
