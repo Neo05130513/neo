@@ -124,6 +124,29 @@ function sceneCards(text: string, maxItems = 4) {
   return text.match(/.{1,12}/g)?.slice(0, maxItems) || [text];
 }
 
+function inferSemanticLayout(text: string, shotType: VideoShotType, order: number) {
+  const normalized = text.replace(/^\d+[.、]\s*/, '').trim();
+  if (shotType === 'title') return 'hero' as const;
+  if (shotType === 'cta') return 'cta' as const;
+  if (shotType === 'pain') {
+    if (/误区|不要|别再|常见错误|陷阱/.test(normalized)) return 'mistake' as const;
+    if (/原因|为什么|根源|导致|因为/.test(normalized)) return 'cause' as const;
+    return 'contrast' as const;
+  }
+  if (shotType === 'result') {
+    if (/数据|提升|增长|效率|比例|趋势|曲线/.test(normalized)) return 'chart' as const;
+    if (/清单|检查|完成|具备|满足|准备好/.test(normalized)) return 'checklist' as const;
+    return 'matrix' as const;
+  }
+  if (/时间线|阶段|先.*再|然后|最后|三步|四步|顺序/.test(normalized)) return 'timeline' as const;
+  if (/关系|协同|联动|节点|网络|链路|连接/.test(normalized)) return 'network' as const;
+  if (/层级|优先级|金字塔|底层|顶层/.test(normalized)) return 'pyramid' as const;
+  if (/矩阵|维度|拆成.*块|象限/.test(normalized)) return 'matrix' as const;
+  if (/清单|核对|检查|要点|标准/.test(normalized)) return 'checklist' as const;
+  if (/流程|步骤|怎么做|操作|设置|执行/.test(normalized)) return 'process' as const;
+  return chooseAiLayout(shotType, order);
+}
+
 function chooseAiLayout(shotType: VideoShotType, order: number) {
   if (shotType === 'title') return 'hero' as const;
   if (shotType === 'cta') return 'cta' as const;
@@ -148,7 +171,7 @@ function aiSceneMetadata(params: {
   script: Script;
 }): Pick<VideoScene, 'layout' | 'headline' | 'emphasis' | 'keywords' | 'cards' | 'chartData' | 'transition'> {
   const cleanedText = params.text.replace(/^\d+[.、]\s*/, '').trim();
-  const layout = chooseAiLayout(params.shotType, params.order);
+  const layout = inferSemanticLayout(cleanedText, params.shotType, params.order);
   const titleSource =
     params.shotType === 'title'
       ? params.script.hook || params.script.title
