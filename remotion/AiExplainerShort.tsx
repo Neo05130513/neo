@@ -415,19 +415,24 @@ function HeroPanel({ scene, palette, enter, layout }: { scene: RemotionSceneInpu
             padding: 38
           }}
         >
-          <div style={{ color: palette.accent, fontSize: 22, fontWeight: 950 }}>内容框架</div>
-          <div style={{ color: palette.text, fontSize: 34, lineHeight: 1.18, fontWeight: 920 }}>
-            {splitLines(scene.subtitle, 10, 3).map((line, index) => (
-              <div key={`${line}-${index}`}>{line}</div>
-            ))}
+          <div style={{ color: palette.accent, fontSize: 22, fontWeight: 950 }}>内容信号</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, alignItems: 'end' }}>
+            <div style={{ color: palette.text, fontSize: 34, lineHeight: 1.18, fontWeight: 920 }}>
+              {splitLines(scene.subtitle, 10, 3).map((line, index) => (
+                <div key={`${line}-${index}`}>{line}</div>
+              ))}
+            </div>
+            <div style={{ color: palette.positive, fontSize: 72, lineHeight: 1, fontWeight: 980 }}>
+              {Math.round(interpolate(enter, [0.72, 1], [52, 96]))}
+            </div>
           </div>
-          <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+          <div style={{ display: 'grid', gap: 16, alignContent: 'start' }}>
             {keyTerms(scene).slice(0, 4).map((term, index) => (
               <div
                 key={`${term}-${index}`}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '72px 1fr',
+                  gridTemplateColumns: '72px 1fr 96px',
                   alignItems: 'center',
                   minHeight: 76,
                   border: `1px solid ${palette.line}`,
@@ -448,6 +453,9 @@ function HeroPanel({ scene, palette, enter, layout }: { scene: RemotionSceneInpu
                   {String(index + 1).padStart(2, '0')}
                 </div>
                 <div style={{ padding: '0 18px', color: palette.text, fontSize: 24, fontWeight: 860 }}>{term}</div>
+                <div style={{ paddingRight: 18, color: palette.muted, fontSize: 18, fontWeight: 820, textAlign: 'right' }}>
+                  {Math.round(interpolate(enter, [0.72, 1], [60 + index * 6, 88 + index * 3]))}%
+                </div>
               </div>
             ))}
           </div>
@@ -1185,6 +1193,32 @@ function NetworkPanel({ scene, palette, enter, progress, layout }: { scene: Remo
       ];
   return (
     <div style={{ position: 'absolute', inset: 0, opacity: enter }}>
+      <div
+        style={{
+          position: 'absolute',
+          left: isWide ? 610 : 90,
+          top: isWide ? 250 : 300,
+          width: isWide ? 300 : 220,
+          height: isWide ? 300 : 220,
+          borderRadius: 999,
+          border: `1px solid ${palette.line}`,
+          opacity: 0.18,
+          transform: `scale(${interpolate(progress, [0, 1], [0.92, 1.08])})`
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          left: isWide ? 655 : 122,
+          top: isWide ? 295 : 332,
+          width: isWide ? 210 : 156,
+          height: isWide ? 210 : 156,
+          borderRadius: 999,
+          border: `1px solid ${palette.line}`,
+          opacity: 0.14,
+          transform: `scale(${interpolate(progress, [0, 1], [1.08, 0.96])})`
+        }}
+      />
       {nodes.slice(0, items.length).map((node, index) => (
         <React.Fragment key={`line-${index}`}>
           <div
@@ -1224,7 +1258,8 @@ function NetworkPanel({ scene, palette, enter, progress, layout }: { scene: Remo
           minHeight: 180,
           padding: '22px 24px',
           border: `1px solid ${palette.line}`,
-          background: palette.surfaceStrong
+          background: palette.surfaceStrong,
+          boxShadow: `0 0 28px ${palette.accent}18`
         }}
       >
         <div style={{ color: palette.accent, fontSize: 20, fontWeight: 900 }}>核心节点</div>
