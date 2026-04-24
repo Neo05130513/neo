@@ -142,6 +142,11 @@ function chartValues(scene: RemotionSceneInput, count: number) {
   return normalized;
 }
 
+function metricValue(scene: RemotionSceneInput) {
+  const values = chartValues(scene, 5);
+  return Math.max(...values);
+}
+
 function primaryDisplay(scene: RemotionSceneInput) {
   if (scene.layout === 'hero') return 'hero';
   if (scene.layout === 'chart') return 'data';
@@ -284,6 +289,7 @@ function HeroPanel({ scene, palette, enter, layout }: { scene: RemotionSceneInpu
   const isWide = layout.isWide;
   const title = splitLines(scene.headline || scene.subtitle, isWide ? 16 : 12, isWide ? 2 : 3);
   const emphasis = scene.emphasis || keyTerms(scene)[0] || 'AI';
+  const terms = keyTerms(scene).slice(0, 3);
   return (
     <div
       style={{
@@ -328,28 +334,76 @@ function HeroPanel({ scene, palette, enter, layout }: { scene: RemotionSceneInpu
           <div key={`${line}-${index}`}>{line}</div>
         ))}
       </div>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+        {terms.map((term, index) => (
+          <div
+            key={`${term}-${index}`}
+            style={{
+              padding: isWide ? '10px 16px' : '12px 18px',
+              border: `1px solid ${index === 0 ? palette.accent : palette.line}`,
+              background: index === 0 ? `${palette.accent}18` : 'rgba(255,255,255,0.05)',
+              color: index === 0 ? palette.accent : palette.text,
+              fontSize: isWide ? 20 : 22,
+              fontWeight: 850,
+              letterSpacing: 0
+            }}
+          >
+            {term}
+          </div>
+        ))}
+      </div>
       {isWide ? (
         <div
           style={{
             position: 'absolute',
-            left: 1260,
-            top: 188,
+            left: 1220,
+            top: 164,
             width: 500,
-            height: 520,
+            height: 560,
             border: `1px solid ${palette.line}`,
             background: palette.surfaceStrong,
             display: 'grid',
-            alignContent: 'center',
-            gap: 20,
+            gridTemplateRows: 'auto auto 1fr',
+            gap: 18,
             padding: 38
           }}
         >
-          <div style={{ color: palette.accent, fontSize: 26, fontWeight: 950 }}>TEMPLATE PREVIEW</div>
-          {keyTerms(scene).slice(0, 4).map((term, index) => (
-            <div key={`${term}-${index}`} style={{ color: palette.text, fontSize: 36, fontWeight: 900, lineHeight: 1.16 }}>
-              {String(index + 1).padStart(2, '0')} / {term}
-            </div>
-          ))}
+          <div style={{ color: palette.accent, fontSize: 22, fontWeight: 950 }}>内容框架</div>
+          <div style={{ color: palette.text, fontSize: 34, lineHeight: 1.18, fontWeight: 920 }}>
+            {splitLines(scene.subtitle, 10, 3).map((line, index) => (
+              <div key={`${line}-${index}`}>{line}</div>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+            {keyTerms(scene).slice(0, 4).map((term, index) => (
+              <div
+                key={`${term}-${index}`}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '72px 1fr',
+                  alignItems: 'center',
+                  minHeight: 76,
+                  border: `1px solid ${palette.line}`,
+                  background: index === 0 ? `${palette.accent}14` : palette.surface
+                }}
+              >
+                <div
+                  style={{
+                    height: '100%',
+                    display: 'grid',
+                    placeItems: 'center',
+                    background: index === 0 ? palette.accent : 'rgba(255,255,255,0.04)',
+                    color: index === 0 ? '#04121f' : palette.accent,
+                    fontSize: 22,
+                    fontWeight: 950
+                  }}
+                >
+                  {String(index + 1).padStart(2, '0')}
+                </div>
+                <div style={{ padding: '0 18px', color: palette.text, fontSize: 24, fontWeight: 860 }}>{term}</div>
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
     </div>
@@ -359,6 +413,7 @@ function HeroPanel({ scene, palette, enter, layout }: { scene: RemotionSceneInpu
 function InsightCards({ scene, palette, enter, layout }: { scene: RemotionSceneInput; palette: AiPalette; enter: number; layout: AiLayout }) {
   const items = cardItems(scene);
   const isWide = layout.isWide;
+  const detailLines = splitLines(scene.voiceover, isWide ? 16 : 14, 8);
   return (
     <div
       style={{
@@ -367,7 +422,7 @@ function InsightCards({ scene, palette, enter, layout }: { scene: RemotionSceneI
         right: isWide ? 88 : 70,
         top: isWide ? 190 : 260,
         display: 'grid',
-        gridTemplateColumns: isWide ? `repeat(${Math.min(items.length, 4)}, minmax(0, 1fr))` : items.length > 2 ? '1fr 1fr' : '1fr',
+        gridTemplateColumns: isWide && items.length >= 3 ? '1.2fr 0.8fr 0.8fr' : isWide ? `repeat(${Math.min(items.length, 4)}, minmax(0, 1fr))` : items.length > 2 ? '1fr 1fr' : '1fr',
         gap: isWide ? 20 : 18,
         opacity: enter
       }}
@@ -380,15 +435,38 @@ function InsightCards({ scene, palette, enter, layout }: { scene: RemotionSceneI
             padding: isWide ? 28 : 24,
             border: `1px solid ${palette.line}`,
             background: index === 0 ? palette.surfaceStrong : palette.surface,
-            transform: `translateY(${interpolate(enter, [0, 1], [30 + index * 10, 0])}px)`
+            transform: `translateY(${interpolate(enter, [0, 1], [30 + index * 10, 0])}px)`,
+            display: 'grid',
+            alignContent: 'space-between',
+            gridColumn: isWide && index === 0 && items.length >= 3 ? 'span 1' : undefined
           }}
         >
-          <div style={{ color: index === 0 ? palette.accent : palette.accent2, fontSize: 24, fontWeight: 950 }}>
-            {String(index + 1).padStart(2, '0')}
+          <div>
+            <div style={{ color: index === 0 ? palette.accent : palette.accent2, fontSize: 24, fontWeight: 950 }}>
+              {String(index + 1).padStart(2, '0')}
+            </div>
+            <div style={{ color: palette.text, fontSize: isWide ? (index === 0 ? 38 : 30) : 34, lineHeight: 1.18, fontWeight: 900, marginTop: 12 }}>
+              {splitLines(item, isWide ? (index === 0 ? 9 : 10) : 15, isWide ? (index === 0 ? 4 : 5) : 3).map((line, lineIndex) => (
+                <div key={`${line}-${lineIndex}`}>{line}</div>
+              ))}
+            </div>
           </div>
-          <div style={{ color: palette.text, fontSize: isWide ? 32 : 34, lineHeight: 1.28, fontWeight: 880, marginTop: 12 }}>
-            {splitLines(item, isWide ? 10 : 15, isWide ? 5 : 3).map((line, lineIndex) => (
-              <div key={`${line}-${lineIndex}`}>{line}</div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {detailLines.slice(index, index + (isWide ? 2 : 1)).map((line, lineIndex) => (
+              <div
+                key={`${line}-${lineIndex}`}
+                style={{
+                  padding: '10px 12px',
+                  border: `1px solid ${palette.line}`,
+                  background: 'rgba(255,255,255,0.04)',
+                  color: palette.muted,
+                  fontSize: isWide ? 18 : 20,
+                  fontWeight: 780,
+                  lineHeight: 1.22
+                }}
+              >
+                {line}
+              </div>
             ))}
           </div>
         </div>
@@ -400,6 +478,7 @@ function InsightCards({ scene, palette, enter, layout }: { scene: RemotionSceneI
 function ProcessStrip({ scene, palette, enter, layout }: { scene: RemotionSceneInput; palette: AiPalette; enter: number; layout: AiLayout }) {
   const items = cardItems(scene).slice(0, 3);
   const isWide = layout.isWide;
+  const detailLines = splitLines(scene.voiceover, isWide ? 18 : 14, 6);
   return (
     <div
       style={{
@@ -414,7 +493,16 @@ function ProcessStrip({ scene, palette, enter, layout }: { scene: RemotionSceneI
       }}
     >
       {items.map((item, index) => (
-        <div key={`${item}-${index}`} style={{ display: 'grid', gridTemplateColumns: isWide ? '1fr' : '92px 1fr', gridTemplateRows: isWide ? '92px 1fr' : undefined, alignItems: 'stretch', gap: 16 }}>
+        <div
+          key={`${item}-${index}`}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: isWide ? '1fr' : '92px 1fr',
+            gridTemplateRows: isWide ? '92px 1fr auto' : undefined,
+            alignItems: 'stretch',
+            gap: 16
+          }}
+        >
           <div
             style={{
               display: 'grid',
@@ -431,20 +519,78 @@ function ProcessStrip({ scene, palette, enter, layout }: { scene: RemotionSceneI
           <div
             style={{
               padding: '26px 28px',
-              minHeight: isWide ? 300 : undefined,
-              background: palette.surface,
+              minHeight: isWide ? 250 : undefined,
+              background: index === 1 ? `${palette.accent}12` : palette.surface,
               border: `1px solid ${palette.line}`,
               color: palette.text,
-              fontSize: isWide ? 34 : 36,
-              lineHeight: 1.25,
+              fontSize: isWide ? 30 : 36,
+              lineHeight: 1.22,
               fontWeight: 880,
-              transform: `translateX(${interpolate(enter, [0, 1], [42, 0])}px)`
+              transform: `translateX(${interpolate(enter, [0, 1], [42, 0])}px)`,
+              display: 'grid',
+              alignContent: 'space-between',
+              position: 'relative',
+              overflow: 'hidden'
             }}
           >
-            {splitLines(item, isWide ? 12 : 18, isWide ? 4 : 2).map((line, lineIndex) => (
-              <div key={`${line}-${lineIndex}`}>{line}</div>
-            ))}
+            {isWide ? (
+              <div
+                style={{
+                  position: 'absolute',
+                  right: 16,
+                  top: -8,
+                  color: 'rgba(255,255,255,0.06)',
+                  fontSize: 120,
+                  lineHeight: 1,
+                  fontWeight: 980
+                }}
+              >
+                {index + 1}
+              </div>
+            ) : null}
+            <div>
+              {splitLines(item, isWide ? 12 : 18, isWide ? 4 : 2).map((line, lineIndex) => (
+                <div key={`${line}-${lineIndex}`}>{line}</div>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gap: 10, marginTop: 18 }}>
+              <div style={{ color: palette.muted, fontSize: 18, fontWeight: 800 }}>
+                {index === 0 ? '先建立结论' : index === 1 ? '再展开结构' : '最后补足证据'}
+              </div>
+              {detailLines.slice(index * 2, index * 2 + 2).map((line, lineIndex) => (
+                <div
+                  key={`${line}-${lineIndex}`}
+                  style={{
+                    color: palette.muted,
+                    fontSize: isWide ? 18 : 20,
+                    lineHeight: 1.24,
+                    fontWeight: 760,
+                    maxWidth: '90%'
+                  }}
+                >
+                  {line}
+                </div>
+              ))}
+            </div>
           </div>
+          {isWide ? (
+            <div
+              style={{
+                height: 6,
+                background: 'rgba(255,255,255,0.08)',
+                overflow: 'hidden',
+                border: `1px solid ${palette.line}`
+              }}
+            >
+              <div
+                style={{
+                  width: `${72 + index * 12}%`,
+                  height: '100%',
+                  background: `linear-gradient(90deg, ${palette.accent}, ${index % 2 ? palette.accent2 : palette.positive})`
+                }}
+              />
+            </div>
+          ) : null}
         </div>
       ))}
     </div>
@@ -454,6 +600,7 @@ function ProcessStrip({ scene, palette, enter, layout }: { scene: RemotionSceneI
 function DataPanel({ scene, palette, enter, progress, layout }: { scene: RemotionSceneInput; palette: AiPalette; enter: number; progress: number; layout: AiLayout }) {
   const values = chartValues(scene, 5);
   const isWide = layout.isWide;
+  const best = metricValue(scene);
   return (
     <div
       style={{
@@ -461,26 +608,66 @@ function DataPanel({ scene, palette, enter, progress, layout }: { scene: Remotio
         left: isWide ? 110 : 70,
         right: isWide ? 110 : 70,
         top: isWide ? 176 : 280,
-        padding: isWide ? 34 : 30,
-        border: `1px solid ${palette.line}`,
-        background: palette.surfaceStrong,
+        display: 'grid',
+        gridTemplateColumns: isWide ? '340px 1fr' : '1fr',
+        gap: 22,
         opacity: enter
       }}
     >
-      <div style={{ color: palette.muted, fontSize: 24, fontWeight: 850 }}>Signal change</div>
-      <div style={{ display: 'flex', height: isWide ? 470 : 360, gap: 22, alignItems: 'end', marginTop: 34 }}>
-        {values.map((value, index) => (
-          <div key={`${value}-${index}`} style={{ flex: 1, display: 'grid', gap: 12 }}>
-            <div
-              style={{
-                height: `${interpolate(progress, [0, 1], [12, value])}%`,
-                background: `linear-gradient(180deg, ${palette.accent}, ${index % 2 ? palette.accent2 : palette.positive})`,
-                border: `1px solid ${palette.line}`
-              }}
-            />
-            <div style={{ color: palette.muted, fontSize: 20, textAlign: 'center' }}>{index + 1}</div>
+      <div
+        style={{
+          padding: isWide ? 32 : 26,
+          border: `1px solid ${palette.line}`,
+          background: palette.surfaceStrong,
+          display: 'grid',
+          alignContent: 'space-between'
+        }}
+      >
+        <div>
+          <div style={{ color: palette.muted, fontSize: 20, fontWeight: 850 }}>核心结果</div>
+          <div style={{ color: palette.text, fontSize: isWide ? 92 : 74, lineHeight: 1, fontWeight: 980, marginTop: 16 }}>
+            {best}
+            <span style={{ fontSize: isWide ? 34 : 28, color: palette.accent, marginLeft: 8 }}>%</span>
           </div>
-        ))}
+          <div style={{ color: palette.text, fontSize: isWide ? 30 : 28, lineHeight: 1.2, fontWeight: 900, marginTop: 16 }}>
+            {scene.emphasis || '关键指标抬升'}
+          </div>
+        </div>
+        <div style={{ display: 'grid', gap: 12 }}>
+          {values.slice(-3).map((value, index) => (
+            <div key={`${value}-${index}`} style={{ display: 'grid', gridTemplateColumns: '68px 1fr 58px', alignItems: 'center', gap: 12 }}>
+              <div style={{ color: palette.muted, fontSize: 16, fontWeight: 800 }}>S0{index + 3}</div>
+              <div style={{ height: 8, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <div style={{ width: `${value}%`, height: '100%', background: `linear-gradient(90deg, ${palette.accent}, ${palette.positive})` }} />
+              </div>
+              <div style={{ color: palette.text, fontSize: 18, fontWeight: 850 }}>{value}%</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div
+        style={{
+          padding: isWide ? 34 : 30,
+          border: `1px solid ${palette.line}`,
+          background: palette.surfaceStrong
+        }}
+      >
+        <div style={{ color: palette.muted, fontSize: 24, fontWeight: 850 }}>Signal change</div>
+        <div style={{ display: 'flex', height: isWide ? 470 : 360, gap: 22, alignItems: 'end', marginTop: 34 }}>
+          {values.map((value, index) => (
+            <div key={`${value}-${index}`} style={{ flex: 1, display: 'grid', gap: 12 }}>
+              <div
+                style={{
+                  height: `${interpolate(progress, [0, 1], [12, value])}%`,
+                  background: `linear-gradient(180deg, ${palette.accent}, ${index % 2 ? palette.accent2 : palette.positive})`,
+                  border: `1px solid ${palette.line}`,
+                  boxShadow: `0 0 24px ${palette.accent}22`
+                }}
+              />
+              <div style={{ color: palette.muted, fontSize: 20, textAlign: 'center' }}>{index + 1}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -789,48 +976,91 @@ function ChecklistPanel({ scene, palette, enter, layout }: { scene: RemotionScen
     <div
       style={{
         position: 'absolute',
-        left: isWide ? 180 : 70,
-        right: isWide ? 180 : 70,
-        top: isWide ? 216 : 276,
+        left: isWide ? 140 : 70,
+        right: isWide ? 140 : 70,
+        top: isWide ? 196 : 276,
         display: 'grid',
-        gap: 16,
+        gridTemplateColumns: isWide ? '340px 1fr' : '1fr',
+        gap: 22,
         opacity: enter
       }}
     >
-      {items.map((item, index) => (
+      {isWide ? (
         <div
-          key={`${item}-${index}`}
           style={{
-            display: 'grid',
-            gridTemplateColumns: '72px 1fr',
-            alignItems: 'center',
-            gap: 18,
-            minHeight: isWide ? 94 : 88,
-            padding: '0 24px 0 0',
+            padding: '28px 28px 30px',
             border: `1px solid ${palette.line}`,
-            background: index === 0 ? palette.surfaceStrong : palette.surface
+            background: palette.surfaceStrong,
+            display: 'grid',
+            alignContent: 'space-between'
           }}
         >
-          <div
-            style={{
-              height: '100%',
-              display: 'grid',
-              placeItems: 'center',
-              background: `linear-gradient(180deg, ${palette.accent}, ${palette.positive})`,
-              color: '#020617',
-              fontSize: 26,
-              fontWeight: 950
-            }}
-          >
-            ✓
+          <div>
+            <div style={{ color: palette.accent, fontSize: 20, fontWeight: 900 }}>执行清单</div>
+            <div style={{ color: palette.text, fontSize: 52, lineHeight: 1.06, fontWeight: 950, marginTop: 16 }}>
+              READY
+            </div>
+            <div style={{ color: palette.muted, fontSize: 24, lineHeight: 1.38, marginTop: 18 }}>
+              {splitLines(scene.headline || scene.subtitle, 10, 4).map((line, index) => (
+                <div key={`${line}-${index}`}>{line}</div>
+              ))}
+            </div>
           </div>
-          <div style={{ color: palette.text, fontSize: isWide ? 29 : 30, lineHeight: 1.26, fontWeight: 860 }}>
-            {splitLines(item, isWide ? 22 : 14, 2).map((line, lineIndex) => (
-              <div key={`${line}-${lineIndex}`}>{line}</div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 20 }}>
+            {keyTerms(scene).slice(0, 3).map((term, index) => (
+              <div
+                key={`${term}-${index}`}
+                style={{
+                  padding: '8px 12px',
+                  border: `1px solid ${palette.line}`,
+                  background: index === 0 ? `${palette.accent}18` : 'rgba(255,255,255,0.05)',
+                  color: index === 0 ? palette.accent : palette.text,
+                  fontSize: 16,
+                  fontWeight: 800
+                }}
+              >
+                {term}
+              </div>
             ))}
           </div>
         </div>
-      ))}
+      ) : null}
+      <div style={{ display: 'grid', gap: 16 }}>
+        {items.map((item, index) => (
+          <div
+            key={`${item}-${index}`}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '72px 1fr',
+              alignItems: 'center',
+              gap: 18,
+              minHeight: isWide ? 94 : 88,
+              padding: '0 24px 0 0',
+              border: `1px solid ${palette.line}`,
+              background: index === 0 ? palette.surfaceStrong : palette.surface
+            }}
+          >
+            <div
+              style={{
+                height: '100%',
+                display: 'grid',
+                placeItems: 'center',
+                background: index === 0 ? `linear-gradient(180deg, ${palette.accent}, ${palette.positive})` : 'rgba(255,255,255,0.06)',
+                color: index === 0 ? '#020617' : palette.accent,
+                fontSize: 26,
+                fontWeight: 950
+              }}
+            >
+              {index === 0 ? '✓' : String(index + 1).padStart(2, '0')}
+            </div>
+            <div style={{ color: palette.text, fontSize: isWide ? 29 : 30, lineHeight: 1.26, fontWeight: 860 }}>
+              {splitLines(item, isWide ? 22 : 14, 2).map((line, lineIndex) => (
+                <div key={`${line}-${lineIndex}`}>{line}</div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
