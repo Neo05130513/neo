@@ -165,13 +165,15 @@ function sceneMotion(scene: RemotionSceneInput, progress: number) {
 
 function primaryDisplay(scene: RemotionSceneInput) {
   if (scene.layout === 'hero') return 'hero';
+  if (scene.layout === 'cause') return 'cause';
   if (scene.layout === 'chart') return 'data';
   if (scene.layout === 'process') return 'process';
   if (scene.layout === 'timeline') return 'timeline';
   if (scene.layout === 'matrix') return 'matrix';
   if (scene.layout === 'network') return 'network';
   if (scene.layout === 'pyramid') return 'pyramid';
-  if (scene.layout === 'contrast' || scene.layout === 'cause' || scene.layout === 'mistake') return 'contrast';
+  if (scene.layout === 'contrast' || scene.layout === 'mistake') return 'contrast';
+  if (scene.shotType === 'result' && scene.layout !== 'checklist') return 'result';
   if (scene.layout === 'cta') return 'cta';
   if (scene.layout === 'checklist') return 'checklist';
   if (scene.shotType === 'title') return 'hero';
@@ -771,6 +773,128 @@ function DataPanel({ scene, palette, enter, progress, layout }: { scene: Remotio
   );
 }
 
+function ResultShowcasePanel({ scene, palette, enter, progress, layout }: { scene: RemotionSceneInput; palette: AiPalette; enter: number; progress: number; layout: AiLayout }) {
+  const isWide = layout.isWide;
+  const items = cardItems(scene).slice(0, 3);
+  const value = metricValue(scene);
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: isWide ? 92 : 70,
+        right: isWide ? 92 : 70,
+        top: isWide ? 188 : 270,
+        display: 'grid',
+        gridTemplateColumns: isWide ? '1.05fr 0.95fr' : '1fr',
+        gap: 22,
+        opacity: enter
+      }}
+    >
+      <div
+        style={{
+          minHeight: isWide ? 420 : 260,
+          padding: '28px 30px',
+          border: `1px solid ${palette.line}`,
+          background: palette.surfaceStrong,
+          display: 'grid',
+          alignContent: 'space-between'
+        }}
+      >
+        <div>
+          <div style={{ color: palette.positive, fontSize: 20, fontWeight: 900 }}>完成态</div>
+          <div style={{ color: palette.text, fontSize: isWide ? 66 : 54, lineHeight: 1.04, fontWeight: 960, marginTop: 14 }}>
+            {splitLines(scene.headline || scene.subtitle, isWide ? 10 : 12, 3).map((line, index) => (
+              <div key={`${line}-${index}`}>{line}</div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 24 }}>
+            <div style={{ color: palette.text, fontSize: isWide ? 108 : 88, lineHeight: 1, fontWeight: 980 }}>
+              {Math.round(interpolate(progress, [0, 1], [0, value]))}
+            </div>
+            <div style={{ color: palette.positive, fontSize: isWide ? 36 : 30, fontWeight: 900 }}>%</div>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gap: 12 }}>
+          {items.map((item, index) => (
+            <div
+              key={`${item}-${index}`}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '58px 1fr',
+                minHeight: 64,
+                border: `1px solid ${palette.line}`,
+                background: index === 0 ? `${palette.positive}14` : 'rgba(255,255,255,0.04)'
+              }}
+            >
+              <div
+                style={{
+                  display: 'grid',
+                  placeItems: 'center',
+                  background: index === 0 ? palette.positive : 'rgba(255,255,255,0.05)',
+                  color: index === 0 ? '#062014' : palette.text,
+                  fontSize: 22,
+                  fontWeight: 950
+                }}
+              >
+                {index === 0 ? '✓' : String(index + 1).padStart(2, '0')}
+              </div>
+              <div style={{ padding: '0 16px', display: 'grid', alignItems: 'center', color: palette.text, fontSize: 22, fontWeight: 840, lineHeight: 1.2 }}>
+                {splitLines(item, isWide ? 12 : 14, 2).map((line, lineIndex) => (
+                  <div key={`${line}-${lineIndex}`}>{line}</div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div
+        style={{
+          minHeight: isWide ? 420 : 240,
+          padding: '26px 28px',
+          border: `1px solid ${palette.line}`,
+          background: palette.surface,
+          position: 'relative',
+          overflow: 'hidden'
+        }}
+      >
+        <div style={{ color: palette.muted, fontSize: 18, fontWeight: 850 }}>完成进度</div>
+        <div style={{ display: 'grid', gap: 18, marginTop: 22 }}>
+          {chartValues(scene, 4).map((metric, index) => (
+            <div key={`${metric}-${index}`} style={{ display: 'grid', gap: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: palette.text, fontSize: 16, fontWeight: 820 }}>
+                <span>{['结构清晰', '镜头表达', '信息密度', '成片感'][index] || `指标 ${index + 1}`}</span>
+                <span>{metric}%</span>
+              </div>
+              <div style={{ height: 10, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    width: `${interpolate(progress, [0, 1], [10, metric])}%`,
+                    height: '100%',
+                    background: `linear-gradient(90deg, ${palette.accent}, ${index % 2 ? palette.accent2 : palette.positive})`
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div
+          style={{
+            position: 'absolute',
+            right: 20,
+            bottom: 18,
+            color: 'rgba(255,255,255,0.08)',
+            fontSize: 120,
+            lineHeight: 1,
+            fontWeight: 980
+          }}
+        >
+          DONE
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ContrastPanel({ scene, palette, enter, layout }: { scene: RemotionSceneInput; palette: AiPalette; enter: number; layout: AiLayout }) {
   const items = cardItems(scene).slice(0, 2);
   const isWide = layout.isWide;
@@ -847,6 +971,89 @@ function ContrastPanel({ scene, palette, enter, layout }: { scene: RemotionScene
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function CauseFlowPanel({ scene, palette, enter, progress, layout }: { scene: RemotionSceneInput; palette: AiPalette; enter: number; progress: number; layout: AiLayout }) {
+  const items = cardItems(scene).slice(0, 3);
+  const isWide = layout.isWide;
+  const labels = ['触发点', '中间机制', '最终表现'];
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: isWide ? 98 : 70,
+        right: isWide ? 98 : 70,
+        top: isWide ? 212 : 272,
+        display: 'grid',
+        gridTemplateColumns: isWide ? 'repeat(3, minmax(0, 1fr))' : '1fr',
+        gap: 20,
+        opacity: enter
+      }}
+    >
+      {items.map((item, index) => (
+        <div
+          key={`${item}-${index}`}
+          style={{
+            position: 'relative',
+            minHeight: isWide ? 280 : 150,
+            padding: '22px 24px 24px',
+            border: `1px solid ${palette.line}`,
+            background: index === 1 ? `${palette.accent}14` : palette.surfaceStrong,
+            overflow: 'hidden'
+          }}
+        >
+          <div style={{ color: index === 0 ? palette.alert : index === 1 ? palette.accent : palette.positive, fontSize: 18, fontWeight: 900 }}>
+            {labels[index] || `节点 ${index + 1}`}
+          </div>
+          <div style={{ color: palette.text, fontSize: isWide ? 30 : 32, lineHeight: 1.2, fontWeight: 900, marginTop: 14 }}>
+            {splitLines(item, isWide ? 9 : 12, 4).map((line, lineIndex) => (
+              <div key={`${line}-${lineIndex}`}>{line}</div>
+            ))}
+          </div>
+          {index < items.length - 1 && isWide ? (
+            <>
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '50%',
+                  right: -26,
+                  width: 52,
+                  height: 2,
+                  background: `linear-gradient(90deg, ${palette.accent}, ${palette.positive})`,
+                  transform: 'translateY(-50%)'
+                }}
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(50% - 7px)',
+                  right: -4,
+                  width: 14,
+                  height: 14,
+                  borderTop: `2px solid ${palette.positive}`,
+                  borderRight: `2px solid ${palette.positive}`,
+                  transform: 'rotate(45deg)'
+                }}
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '50%',
+                  right: interpolate(progress, [0, 1], [8, -10]),
+                  width: 10,
+                  height: 10,
+                  borderRadius: 999,
+                  background: palette.positive,
+                  boxShadow: `0 0 14px ${palette.positive}`,
+                  transform: 'translateY(-50%)'
+                }}
+              />
+            </>
+          ) : null}
+        </div>
+      ))}
     </div>
   );
 }
@@ -1335,6 +1542,8 @@ function SceneVisual({
       {displayMode === 'hero' ? <HeroPanel scene={scene} palette={palette} enter={enter} layout={layout} /> : null}
       {displayMode === 'cards' ? <InsightCards scene={scene} palette={palette} enter={enter} layout={layout} /> : null}
       {displayMode === 'process' ? <ProcessStrip scene={scene} palette={palette} enter={enter} layout={layout} /> : null}
+      {displayMode === 'cause' ? <CauseFlowPanel scene={scene} palette={palette} enter={enter} progress={progress} layout={layout} /> : null}
+      {displayMode === 'result' ? <ResultShowcasePanel scene={scene} palette={palette} enter={enter} progress={progress} layout={layout} /> : null}
       {displayMode === 'data' ? <DataPanel scene={scene} palette={palette} enter={enter} progress={progress} layout={layout} /> : null}
       {displayMode === 'contrast' ? <ContrastPanel scene={scene} palette={palette} enter={enter} layout={layout} /> : null}
       {displayMode === 'timeline' ? <TimelinePanel scene={scene} palette={palette} enter={enter} layout={layout} /> : null}
