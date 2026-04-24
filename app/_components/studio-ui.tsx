@@ -1,9 +1,6 @@
 import Link from 'next/link';
 
-export const newWindowLinkProps = {
-  target: '_blank',
-  rel: 'noreferrer'
-} as const;
+export const newWindowLinkProps = {} as const;
 
 export const panelStyle = {
   borderRadius: 12,

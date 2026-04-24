@@ -1,9 +1,7 @@
 'use client';
 
-export function openPendingWindow() {
-  const nextWindow = window.open('about:blank', '_blank');
-  if (nextWindow) nextWindow.opener = null;
-  return nextWindow;
+export function openPendingWindow(): Window | null {
+  return null;
 }
 
 export function navigatePendingWindow(nextWindow: Window | null, href: string) {
@@ -11,5 +9,5 @@ export function navigatePendingWindow(nextWindow: Window | null, href: string) {
     nextWindow.location.href = href;
     return;
   }
-  window.open(href, '_blank', 'noopener,noreferrer');
+  window.location.href = href;
 }
