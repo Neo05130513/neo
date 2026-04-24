@@ -78,6 +78,13 @@ function buildScene(params: {
   visualPrompt: string;
   voiceover: string;
   subtitle?: string;
+  layout?: VideoScene['layout'];
+  headline?: string;
+  emphasis?: string;
+  keywords?: string[];
+  cards?: string[];
+  chartData?: number[];
+  transition?: VideoScene['transition'];
 }) : VideoScene {
   const subtitle = params.subtitle || params.voiceover;
   return {
@@ -89,7 +96,99 @@ function buildScene(params: {
     visualPrompt: params.visualPrompt,
     voiceover: params.voiceover,
     subtitle,
-    durationSec: estimateDuration(params.voiceover)
+    durationSec: estimateDuration(params.voiceover),
+    layout: params.layout,
+    headline: params.headline,
+    emphasis: params.emphasis,
+    keywords: params.keywords,
+    cards: params.cards,
+    chartData: params.chartData,
+    transition: params.transition
+  };
+}
+
+function sceneKeywords(text: string, fallback: string[] = []) {
+  const words = text
+    .split(/[，。！？；、：\s]/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2 && item.length <= 10);
+  return Array.from(new Set([...fallback, ...words])).slice(0, 5);
+}
+
+function sceneCards(text: string, maxItems = 4) {
+  const parts = text
+    .split(/[。！？；]/)
+    .map((item) => item.replace(/^\d+[.、]\s*/, '').trim())
+    .filter((item) => item.length >= 3);
+  if (parts.length) return parts.slice(0, maxItems);
+  return text.match(/.{1,12}/g)?.slice(0, maxItems) || [text];
+}
+
+function chooseAiLayout(shotType: VideoShotType, order: number) {
+  if (shotType === 'title') return 'hero' as const;
+  if (shotType === 'cta') return 'cta' as const;
+  if (shotType === 'pain') {
+    const variants = ['contrast', 'cause', 'mistake'] as const;
+    return variants[(order - 1) % variants.length];
+  }
+  if (shotType === 'result') {
+    const variants = ['chart', 'matrix', 'checklist'] as const;
+    return variants[(order - 1) % variants.length];
+  }
+  const variants = ['process', 'timeline', 'network', 'checklist', 'matrix', 'pyramid'] as const;
+  return variants[(order - 1) % variants.length];
+}
+
+function aiSceneMetadata(params: {
+  shotType: VideoShotType;
+  order: number;
+  text: string;
+  topic: Topic;
+  tutorial: Tutorial;
+  script: Script;
+}): Pick<VideoScene, 'layout' | 'headline' | 'emphasis' | 'keywords' | 'cards' | 'chartData' | 'transition'> {
+  const cleanedText = params.text.replace(/^\d+[.、]\s*/, '').trim();
+  const layout = chooseAiLayout(params.shotType, params.order);
+  const titleSource =
+    params.shotType === 'title'
+      ? params.script.hook || params.script.title
+      : params.shotType === 'cta'
+        ? params.script.cta || cleanedText
+        : cleanedText;
+  const headline = titleSource.slice(0, 22);
+  const emphasis =
+    params.shotType === 'title'
+      ? params.topic.angle
+      : params.shotType === 'cta'
+        ? '立即执行'
+        : sceneKeywords(cleanedText, [params.topic.painPoint]).find((item) => item !== headline)?.slice(0, 14);
+  const keywords = sceneKeywords(cleanedText, [params.topic.title, params.topic.angle, ...(params.tutorial.tags || []).slice(0, 2)]);
+  const cards = sceneCards(cleanedText);
+  const chartData =
+    params.shotType === 'result'
+      ? [26, 44, 58, 76, 91]
+      : params.shotType === 'step' && (layout === 'matrix' || layout === 'network')
+        ? [18, 32, 47, 63]
+        : undefined;
+  const transition =
+    params.shotType === 'title'
+      ? 'zoom'
+      : params.shotType === 'cta'
+        ? 'fade'
+        : layout === 'timeline'
+          ? 'push'
+          : layout === 'mistake'
+            ? 'flash'
+            : 'wipe';
+
+  return {
+    layout,
+    headline,
+    emphasis,
+    keywords,
+    cards,
+    chartData,
+    transition
   };
 }
 
@@ -600,6 +699,9 @@ export function buildStoryboard(project: VideoProject, script: Script, topic: To
 
   return scriptShots.map((shot) => {
     const shotType = shot.shotType;
+    const aiMeta = project.template === 'ai-explainer-short-v1'
+      ? aiSceneMetadata({ shotType, order: shot.order, text: shot.voiceover, topic, tutorial, script })
+      : null;
     return buildScene({
       projectId: project.id,
       order: shot.order,
@@ -609,7 +711,14 @@ export function buildStoryboard(project: VideoProject, script: Script, topic: To
         ? buildTechVisualPrompt({ project, script, topic, tutorial, shotType, text: shot.voiceover, order: shot.order })
         : shot.visualPrompt,
       voiceover: shot.voiceover,
-      subtitle: shot.subtitle
+      subtitle: shot.subtitle,
+      layout: aiMeta?.layout,
+      headline: aiMeta?.headline,
+      emphasis: aiMeta?.emphasis,
+      keywords: aiMeta?.keywords,
+      cards: aiMeta?.cards,
+      chartData: aiMeta?.chartData,
+      transition: aiMeta?.transition
     });
   });
 }
