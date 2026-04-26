@@ -1,5 +1,6 @@
 import path from 'path';
 import { ensureDirectory, nowIso, readJsonFile, simpleId, writeJsonFile, writeTextFile } from './storage';
+import { sanitizeSceneText } from './narration';
 import { getAudioDurationSec } from './audio-metadata';
 import { buildProjectSrt, buildSubtitleCues } from './subtitles';
 import { generateSceneVoiceAudio } from './voice-provider';
@@ -60,7 +61,10 @@ function toRemotionInput(project: VideoProject, scenes: VideoScene[], audioBySce
       aspectRatio: project.aspectRatio,
       visualPreset: project.visualPreset
     },
-    scenes: scenes.map((scene) => ({
+    scenes: scenes.map((rawScene) => {
+      const scene = sanitizeSceneText(rawScene);
+      const cueSource = scene.voiceover || scene.subtitle;
+      return ({
       id: scene.id,
       order: scene.order,
       shotType: scene.shotType,
@@ -78,8 +82,9 @@ function toRemotionInput(project: VideoProject, scenes: VideoScene[], audioBySce
       cards: scene.cards,
       chartData: scene.chartData,
       transition: scene.transition,
-      subtitleCues: buildSubtitleCues(scene.voiceover, audioBySceneId.get(scene.id)?.durationSec || scene.durationSec)
-    }))
+      subtitleCues: buildSubtitleCues(cueSource, audioBySceneId.get(scene.id)?.durationSec || scene.durationSec)
+    });
+    })
   };
 }
 
@@ -118,13 +123,22 @@ async function prepareSceneAudio(params: {
   const profile = await getDefaultVoiceProfile();
   const audioBySceneId = new Map<string, { publicPath: string; durationSec: number }>();
   const createdAssets: VideoAsset[] = [];
+  const cleanedScenes = params.scenes.map((scene) => sanitizeSceneText(scene));
 
   if (!profile) {
     await params.onProgress?.({ stage: 'audio-skipped', progress: 34, detail: 'No default voice profile; rendering with visual timing only.' });
-    return { audioBySceneId, createdAssets, scenes: params.scenes };
+    return { audioBySceneId, createdAssets, scenes: cleanedScenes };
   }
 
-  for (const [index, scene] of params.scenes.entries()) {
+  for (const [index, scene] of cleanedScenes.entries()) {
+    if (!scene.voiceover.trim()) {
+      await params.onProgress?.({
+        stage: 'audio-skipped-scene',
+        progress: 24 + Math.round((index / Math.max(1, params.scenes.length)) * 18),
+        detail: `Skipping empty voiceover ${index + 1}/${params.scenes.length}`
+      });
+      continue;
+    }
     await params.onProgress?.({
       stage: 'audio-generating',
       progress: 24 + Math.round((index / Math.max(1, params.scenes.length)) * 18),
@@ -153,7 +167,7 @@ async function prepareSceneAudio(params: {
   }
 
   await params.onProgress?.({ stage: 'audio-ready', progress: 44, detail: 'Voiceover timing is ready.' });
-  const scenes = params.scenes.map((scene) => {
+  const scenes = cleanedScenes.map((scene) => {
     const audio = audioBySceneId.get(scene.id);
     if (!audio) return scene;
     return {

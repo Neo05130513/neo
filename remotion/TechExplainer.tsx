@@ -132,6 +132,29 @@ function semanticUnits(text: string, fallback: string[], maxItems: number) {
   return (units.length ? units : fallback).slice(0, maxItems);
 }
 
+function displaySeeds(scene: RemotionSceneInput) {
+  return Array.from(new Set([
+    ...(scene.cards || []),
+    scene.headline || '',
+    scene.subtitle || '',
+    scene.emphasis || '',
+    ...(scene.keywords || [])
+  ].map((item) => item.replace(/\s+/g, ' ').trim()).filter((item) => item.length >= 2)));
+}
+
+function displayUnits(scene: RemotionSceneInput, fallback: string[], maxItems: number, maxChars = 12) {
+  const seeds = displaySeeds(scene);
+  const units = seeds.flatMap((item) => semanticUnits(item, [], 2))
+    .map((item) => item.slice(0, maxChars))
+    .filter((item) => item.length >= 2);
+  return (Array.from(new Set(units)).length ? Array.from(new Set(units)) : fallback).slice(0, maxItems);
+}
+
+function displayLines(scene: RemotionSceneInput, fallback: string, maxChars: number, maxLines: number) {
+  const seeds = displaySeeds(scene);
+  return lines(seeds.length ? seeds.slice(0, maxLines + 1).join(' · ') : fallback, maxChars, maxLines);
+}
+
 function hasAny(text: string, words: string[]) {
   return words.some((word) => text.includes(word));
 }
@@ -535,7 +558,7 @@ function HeroScene({ scene, projectTitle, palette, enter }: { scene: RemotionSce
           <ChipIcon palette={palette} />
           <div>
             <div style={{ color: palette.text, fontSize: 42, fontWeight: 900 }}>{scene.emphasis || '信息图自动编排'}</div>
-            <div style={{ color: palette.muted, fontSize: 30, marginTop: 18 }}>{lines(scene.subtitle || scene.voiceover, 14, 1)[0]}</div>
+            <div style={{ color: palette.muted, fontSize: 30, marginTop: 18 }}>{displayLines(scene, '问题拆清，结构展开', 14, 1)[0]}</div>
           </div>
         </div>
       </GlassPanel>
@@ -544,7 +567,7 @@ function HeroScene({ scene, projectTitle, palette, enter }: { scene: RemotionSce
 }
 
 function ContrastScene({ scene, palette, frame, enter }: { scene: RemotionSceneInput; palette: TechPalette; frame: number; enter: number }) {
-  const chunks = lines(scene.subtitle || scene.voiceover, 12, 4);
+  const chunks = displayUnits(scene, ['问题暴露', '方法缺位', '结果不稳', '需要新做法'], 4, 10);
   return (
     <div style={{ position: 'absolute', left: 72, right: 72, top: 272 }}>
       <div style={{ color: palette.warning, fontSize: 64, lineHeight: 1.12, fontWeight: 950, opacity: enter }}>
@@ -573,14 +596,14 @@ function ContrastScene({ scene, palette, frame, enter }: { scene: RemotionSceneI
         })}
       </div>
       <div style={{ marginTop: 44, color: palette.text, fontSize: 42, lineHeight: 1.25, fontWeight: 780 }}>
-        {chunks.slice(2).join('') || scene.voiceover}
+        {displayLines(scene, '先把问题和方法拆开，再让画面逐步推进', 14, 2).join('')}
       </div>
     </div>
   );
 }
 
 function NetworkScene({ scene, palette, frame }: { scene: RemotionSceneInput; palette: TechPalette; frame: number }) {
-  const items = scene.cards?.length ? scene.cards.slice(0, 4) : semanticUnits(scene.subtitle || scene.voiceover, ['输入', '模型', '知识', '输出'], 4);
+  const items = displayUnits(scene, ['输入', '模型', '知识', '输出'], 4, 10);
   const center = { x: 486, y: 376 };
   const nodes = [
     { x: 210, y: 166, label: items[0] || '输入' },
@@ -638,7 +661,7 @@ function NetworkScene({ scene, palette, frame }: { scene: RemotionSceneInput; pa
 }
 
 function ProcessScene({ scene, palette, frame }: { scene: RemotionSceneInput; palette: TechPalette; frame: number }) {
-  const items = scene.cards?.length ? scene.cards.slice(0, 4) : semanticUnits(scene.subtitle || scene.voiceover, ['识别问题', '拆成步骤', '调用工具', '得到结果'], 4);
+  const items = displayUnits(scene, ['识别问题', '拆成步骤', '调用工具', '得到结果'], 4, 10);
   return (
     <>
       <SceneTitle palette={palette}>{scene.headline || lines(scene.subtitle, 14, 2).join('')}</SceneTitle>
@@ -722,7 +745,7 @@ function ChartScene({ scene, palette, frame }: { scene: RemotionSceneInput; pale
 }
 
 function MatrixScene({ scene, palette, frame }: { scene: RemotionSceneInput; palette: TechPalette; frame: number }) {
-  const items = scene.cards?.length ? scene.cards.slice(0, 6) : semanticUnits(scene.subtitle || scene.voiceover, ['行业 Know-how', '流程规则', '内容方法'], 6);
+  const items = displayUnits(scene, ['行业 Know-how', '流程规则', '内容方法'], 6, 12);
   const labels = items.length >= 3 ? items.slice(0, 3) : ['行业 Know-how', '流程规则', '内容方法'];
   return (
     <div style={{ position: 'absolute', left: 62, right: 62, top: 300 }}>
@@ -746,7 +769,7 @@ function MatrixScene({ scene, palette, frame }: { scene: RemotionSceneInput; pal
 }
 
 function ChecklistScene({ scene, palette, frame }: { scene: RemotionSceneInput; palette: TechPalette; frame: number }) {
-  const items = scene.cards?.length ? scene.cards.slice(0, 4) : semanticUnits(scene.voiceover || scene.subtitle, ['清晰框架', '更快产出', '稳定复用'], 4);
+  const items = displayUnits(scene, ['清晰框架', '更快产出', '稳定复用'], 4, 10);
   return (
     <div style={{ position: 'absolute', left: 82, right: 82, top: 310 }}>
       <div style={{ color: palette.success, fontSize: 62, fontWeight: 950 }}>{scene.headline || '你会得到'}</div>
@@ -768,8 +791,8 @@ function ChecklistScene({ scene, palette, frame }: { scene: RemotionSceneInput; 
 }
 
 function CauseScene({ scene, palette, frame }: { scene: RemotionSceneInput; palette: TechPalette; frame: number }) {
-  const items = scene.cards?.length ? scene.cards.slice(0, 3) : semanticUnits(scene.voiceover || scene.subtitle, ['工具变多', '问题变复杂', '方法没沉淀'], 3);
-  const result = scene.emphasis || lines(scene.subtitle || scene.voiceover, 14, 2).join('');
+  const items = displayUnits(scene, ['工具变多', '问题变复杂', '方法没沉淀'], 3, 10);
+  const result = scene.emphasis || displayLines(scene, '先建立规则，再放大能力', 14, 2).join('');
   return (
     <>
       <SceneTitle palette={palette}>{scene.headline || '为什么会拉开差距？'}</SceneTitle>
@@ -801,7 +824,7 @@ function CauseScene({ scene, palette, frame }: { scene: RemotionSceneInput; pale
 }
 
 function TimelineScene({ scene, palette, frame }: { scene: RemotionSceneInput; palette: TechPalette; frame: number }) {
-  const items = scene.cards?.length ? scene.cards.slice(0, 4) : semanticUnits(scene.voiceover || scene.subtitle, ['明确目标', '拆成节点', '生成结果'], 4);
+  const items = displayUnits(scene, ['明确目标', '拆成节点', '生成结果'], 4, 10);
   const revealLine = interpolate(frame, [10, 62], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
   return (
     <>
@@ -828,7 +851,7 @@ function TimelineScene({ scene, palette, frame }: { scene: RemotionSceneInput; p
 }
 
 function MistakeScene({ scene, palette, frame }: { scene: RemotionSceneInput; palette: TechPalette; frame: number }) {
-  const items = scene.cards?.length ? scene.cards.slice(0, 6) : semanticUnits(scene.voiceover || scene.subtitle, ['直接套模板', '忽略目标', '缺少复盘', '先拆问题', '建立规则', '持续迭代'], 6);
+  const items = displayUnits(scene, ['直接套模板', '忽略目标', '缺少复盘', '先拆问题', '建立规则', '持续迭代'], 6, 10);
   const bad = items.slice(0, 3);
   const good = items.slice(3, 6).length ? items.slice(3, 6) : ['先拆问题', '建立规则', '持续迭代'];
   return (
@@ -858,7 +881,7 @@ function MistakeScene({ scene, palette, frame }: { scene: RemotionSceneInput; pa
 }
 
 function PyramidScene({ scene, palette, frame }: { scene: RemotionSceneInput; palette: TechPalette; frame: number }) {
-  const items = scene.cards?.length ? scene.cards.slice(0, 3) : semanticUnits(scene.voiceover || scene.subtitle, ['底层知识', '流程规则', 'AI 放大'], 3);
+  const items = displayUnits(scene, ['底层知识', '流程规则', 'AI 放大'], 3, 10);
   const levels = [
     { width: 760, top: 500, color: palette.accent2, label: items[0] || '底层知识' },
     { width: 600, top: 360, color: palette.accent, label: items[1] || '流程规则' },
@@ -901,7 +924,7 @@ function CtaScene({ scene, palette, enter }: { scene: RemotionSceneInput; palett
   return (
     <div style={{ position: 'absolute', left: 82, right: 82, top: 380, textAlign: 'center', opacity: enter }}>
       <div style={{ color: palette.text, fontSize: 78, lineHeight: 1.12, fontWeight: 950 }}>{scene.headline || '收藏这套框架'}</div>
-      <div style={{ color: palette.warning, fontSize: 58, lineHeight: 1.18, marginTop: 42, fontWeight: 900 }}>{scene.emphasis || lines(scene.voiceover, 12, 3).join('')}</div>
+      <div style={{ color: palette.warning, fontSize: 58, lineHeight: 1.18, marginTop: 42, fontWeight: 900 }}>{scene.emphasis || displayLines(scene, '先收下这套框架', 12, 3).join('')}</div>
       <GlassPanel palette={palette} style={{ marginTop: 86, padding: '42px 40px' }}>
         <div style={{ color: palette.accent, fontSize: 32, fontWeight: 900 }}>NEXT MOVE</div>
         <div style={{ color: palette.muted, fontSize: 34, lineHeight: 1.36, marginTop: 24 }}>把文案拆成问题、流程、方法和结果，画面会自动匹配对应的信息图。</div>
@@ -1023,7 +1046,7 @@ function LandscapeChrome({
 }
 
 function landscapeItems(scene: RemotionSceneInput, fallback: string[], count = 4) {
-  return scene.cards?.length ? scene.cards.slice(0, count) : semanticUnits(scene.voiceover || scene.subtitle, fallback, count);
+  return displayUnits(scene, fallback, count, 12);
 }
 
 function LandscapeVisual({ scene, mode, palette, frame }: { scene: RemotionSceneInput; mode: SceneMode; palette: TechPalette; frame: number }) {
@@ -1117,7 +1140,7 @@ function LandscapeTechScene({
         <div style={{ position: 'absolute', left: 82, top: 180, width: 760, color: palette.text, opacity: enter, transform: `translateY(${(1 - enter) * 42}px)` }}>
           <div style={{ color: palette.accent, fontSize: 28, fontWeight: 950, marginBottom: 28 }}>{scene.emphasis || modeLabels[mode]}</div>
           <div style={{ fontSize: 72, lineHeight: 1.08, fontWeight: 950 }}>{lines(title, 11, 3).map((line) => <div key={line}>{line}</div>)}</div>
-          <div style={{ marginTop: 42, color: palette.muted, fontSize: 34, lineHeight: 1.42, fontWeight: 650 }}>{lines(scene.voiceover, 18, 3).join('')}</div>
+          <div style={{ marginTop: 42, color: palette.muted, fontSize: 34, lineHeight: 1.42, fontWeight: 650 }}>{displayLines(scene, '把信息拆成结构、卡片和结果，再让旁白补解释', 18, 3).join('')}</div>
         </div>
         <LandscapeVisual scene={scene} mode={mode} palette={palette} frame={frame} />
         <MainCaption scene={scene} palette={palette} frame={frame} />

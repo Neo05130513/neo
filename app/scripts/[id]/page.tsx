@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation';
 import { StudioShell } from '../../_components/studio-shell';
 import { EmptyGuide, linkButtonStyle, MetricTile, newWindowLinkProps, Panel, SectionTitle, StatusBadge, subtlePanelStyle } from '../../_components/studio-ui';
 import { getScripts, getTopics, getTutorials, getVideoProjects } from '@/lib/queries';
+import { sanitizeScriptBlock } from '@/lib/narration';
 import { buildScriptShotBreakdown } from '@/lib/script-shots';
 import { ScriptEditor } from './script-editor';
 import { ScriptDetailActions } from './script-detail-actions';
@@ -25,6 +26,9 @@ export default async function ScriptDetailPage({ params }: { params: { id: strin
   const relatedProjects = videoProjects.filter((item) => item.scriptId === script.id);
   const shotBreakdown = buildScriptShotBreakdown(script, tutorial);
   const totalDurationSec = shotBreakdown.reduce((total, shot) => total + shot.durationSec, 0);
+  const displayHook = sanitizeScriptBlock(script.hook);
+  const displayBody = sanitizeScriptBlock(script.body);
+  const displayCta = sanitizeScriptBlock(script.cta);
 
   return (
     <StudioShell
@@ -48,17 +52,17 @@ export default async function ScriptDetailPage({ params }: { params: { id: strin
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-            <ScriptBlock title="开场" text={script.hook} />
-            <ScriptBlock title="正文" text={script.body} />
-            <ScriptBlock title="结尾" text={script.cta} />
+            <ScriptBlock title="开场" text={displayHook} />
+            <ScriptBlock title="正文" text={displayBody} />
+            <ScriptBlock title="结尾" text={displayCta} />
           </div>
 
           <section style={{ display: 'grid', gap: 12 }}>
             <SectionTitle title="镜头拆解" note="生成视频前先确认这一版镜头。每个镜头都有旁白、字幕、画面方向和预计时长。" />
             <div style={{ display: 'grid', gap: 10 }}>
               {shotBreakdown.map((shot) => (
-                <article key={shot.order} style={{ ...subtlePanelStyle, padding: 14, display: 'grid', gridTemplateColumns: '42px minmax(0, 1fr) 112px', gap: 14, alignItems: 'start' }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 8, display: 'grid', placeItems: 'center', background: '#082f49', color: '#7dd3fc', fontWeight: 900 }}>{shot.order}</div>
+                <article key={shot.order} style={{ ...subtlePanelStyle, borderRadius: 20, padding: 14, display: 'grid', gridTemplateColumns: '42px minmax(0, 1fr) 112px', gap: 14, alignItems: 'start' }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 12, display: 'grid', placeItems: 'center', background: '#082f49', color: '#7dd3fc', fontWeight: 900 }}>{shot.order}</div>
                   <div style={{ display: 'grid', gap: 8, minWidth: 0 }}>
                     <strong style={{ color: '#e5ecf7', lineHeight: 1.45 }}>{shot.title}</strong>
                     <div style={{ color: '#cbd5e1', lineHeight: 1.75, whiteSpace: 'pre-wrap' }}>旁白：{shot.voiceover}</div>
@@ -81,9 +85,9 @@ export default async function ScriptDetailPage({ params }: { params: { id: strin
               <ScriptEditor
                 scriptId={script.id}
                 initialTitle={script.title}
-                initialHook={script.hook}
-                initialBody={script.body}
-                initialCta={script.cta}
+                initialHook={displayHook}
+                initialBody={displayBody}
+                initialCta={displayCta}
                 initialStyle={script.style}
               />
             </div>

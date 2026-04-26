@@ -6,6 +6,7 @@ import { EmptyGuide, linkButtonStyle, newWindowLinkProps, Panel, SectionTitle, S
 import { getCurrentUser } from '@/lib/auth';
 import { getScripts, getTutorials, getVideoAssets, getVideoProjects } from '@/lib/queries';
 import { listVoiceProfiles } from '@/lib/voice-profiles';
+import { ScriptAssetsClient } from './script-assets-client';
 import { VoiceAssetsClient } from './voice-assets-client';
 
 type AssetView = 'voices' | 'documents' | 'scripts' | 'outputs';
@@ -61,7 +62,7 @@ export default async function AssetsPage({ searchParams }: { searchParams?: { vi
           createdAt: voice.createdAt
         }))} /> : null}
         {activeView === 'documents' ? <DocumentList tutorials={tutorials} projects={projects} /> : null}
-        {activeView === 'scripts' ? <ScriptList scripts={scripts} projects={projects} /> : null}
+        {activeView === 'scripts' ? <ScriptAssetsClient initialScripts={scripts} projects={projects} /> : null}
         {activeView === 'outputs' ? <OutputList assets={outputAssets} projects={projects} /> : null}
       </Panel>
     </StudioShell>
@@ -81,26 +82,6 @@ function DocumentList({ tutorials, projects }: { tutorials: Awaited<ReturnType<t
               <span style={{ color: '#94a3b8', lineHeight: 1.5 }}>{tutorial.sourceFile || tutorial.sourceType}</span>
             </div>
             <StatusBadge text={`${count} 个视频`} tone={count ? 'success' : 'neutral'} />
-          </Link>
-        );
-      })}
-    </div>
-  );
-}
-
-function ScriptList({ scripts, projects }: { scripts: Awaited<ReturnType<typeof getScripts>>; projects: Awaited<ReturnType<typeof getVideoProjects>> }) {
-  if (!scripts.length) return <EmptyGuide title="还没有脚本" text="导入文档并生成视频后，系统会自动沉淀脚本。" />;
-  return (
-    <div style={{ display: 'grid', gap: 10 }}>
-      {scripts.slice(0, 80).map((script) => {
-        const project = projects.find((item) => item.scriptId === script.id);
-        return (
-          <Link key={script.id} href={`/scripts/${script.id}`} {...newWindowLinkProps} style={{ textDecoration: 'none', color: 'inherit', borderRadius: 10, border: '1px solid #243042', background: '#111823', padding: 14, display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'center' }}>
-            <div style={{ display: 'grid', gap: 5 }}>
-              <strong>{script.title}</strong>
-              <span style={{ color: '#94a3b8' }}>版本 v{script.version || 1} · {script.duration}</span>
-            </div>
-            <StatusBadge text={project ? '已生成视频' : '未生成视频'} tone={project ? 'success' : 'warning'} />
           </Link>
         );
       })}

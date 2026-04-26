@@ -11,6 +11,20 @@ export interface ScriptShotBreakdownItem {
   durationSec: number;
 }
 
+const LOW_SIGNAL_LINE_PATTERNS = [
+  /^补充说明\s*\d*[：:\s]*$/i,
+  /^说明\s*\d*[：:\s]*$/i,
+  /^注意事项?[：:\s]*$/i,
+  /^画面[：:\s]*$/i,
+  /^镜头[：:\s]*$/i,
+  /^场景[：:\s]*$/i,
+  /^字幕[：:\s]*$/i,
+  /^旁白[：:\s]*$/i,
+  /^步骤[：:\s]*$/i,
+  /^第[一二三四五六七八九十\d]+步[：:\s]*$/i,
+  /^(例如|比如|等等|待补充|略|同上)$/i
+] as const;
+
 function cleanLine(value: string) {
   return value
     .replace(/\s+/g, ' ')
@@ -18,21 +32,100 @@ function cleanLine(value: string) {
     .trim();
 }
 
+function stripDirectorNotes(value: string) {
+  return cleanLine(value)
+    .replace(/先把使用边界说清楚，后面的操作才不会混乱[。！]?/g, '')
+    .replace(/先把适用场景交代清楚，后面的步骤才更容易看懂[。！]?/g, '')
+    .replace(/先把[^。！？]*说清楚[。！]?/g, '')
+    .replace(/后面的[^。！？]*才[^。！？]*[。！]?/g, '')
+    .replace(/这里要讲清楚[^。！？]*[。！]?/g, '')
+    .replace(/这一段要保留[^。！？]*[。！]?/g, '')
+    .replace(/这一段主要是为了[^。！？]*[。！]?/g, '')
+    .replace(/让观众知道为什么要这么做，而不是只看到一个操作结果[。！]?/g, '')
+    .replace(/这一点要提前确认，否则流程看起来已经完成，实际结果还可能需要人工校验[。！]?/g, '')
+    .replace(/如果这一步没提前确认，落地时通常还得返工或人工补一次[。！]?/g, '')
+    .replace(/这一步做完，后面的流程才能顺着接上[。！]?/g, '')
+    .replace(/画面可以先[^。！？]*[。！]?/g, '')
+    .replace(/这里可以用[^。！？]*[。！]?/g, '')
+    .replace(/这一句如果太长可以[^。！？]*[。！]?/g, '')
+    .replace(/[，,；;]{2,}/g, '，')
+    .replace(/。{2,}/g, '。')
+    .replace(/[，,；;]\s*[。！？]$/g, '。')
+    .replace(/^[，,；;。！？\s]+/, '')
+    .replace(/[，,；;。\s]+$/g, '')
+    .trim();
+}
+
+function isLowSignalLine(value: string) {
+  const text = stripDirectorNotes(value);
+  if (!text) return true;
+  if (LOW_SIGNAL_LINE_PATTERNS.some((pattern) => pattern.test(text))) return true;
+  if (/^[：:，,、；;。\-—]+$/.test(text)) return true;
+  if (/[：:]$/.test(text)) return true;
+  if (text.length <= 3 && !/[0-9a-zA-Z]/.test(text)) return true;
+  return false;
+}
+
+function splitNarrativeClauses(value: string) {
+  const normalized = stripDirectorNotes(value);
+  if (!normalized) return [];
+
+  const segments = normalized
+    .split(/[。！？；]/)
+    .flatMap((sentence) => {
+      const trimmed = sentence.trim();
+      if (!trimmed) return [];
+      if (trimmed.length <= 24) return [trimmed];
+
+      return trimmed
+        .split(/[，、]/)
+        .map((item) => stripDirectorNotes(item))
+        .filter((item) => item.length >= 5);
+    })
+    .map((item) => stripDirectorNotes(item))
+    .filter((item) => !isLowSignalLine(item));
+
+  const merged: string[] = [];
+  for (const segment of segments) {
+    const previous = merged[merged.length - 1];
+    if (previous && previous.length < 8 && previous.length + segment.length <= 28) {
+      merged[merged.length - 1] = `${previous}，${segment}`;
+      continue;
+    }
+    merged.push(segment);
+  }
+  return merged;
+}
+
 function clip(value: string, maxLength: number) {
-  const text = cleanLine(value);
+  const text = stripDirectorNotes(value);
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength - 1)}...`;
 }
 
 function estimateDuration(text: string) {
-  const normalized = text.replace(/\s+/g, '');
-  return Math.max(3, Math.ceil(normalized.length / 4));
+  const normalized = stripDirectorNotes(text).replace(/\s+/g, '');
+  if (!normalized) return 2;
+
+  const contentLength = normalized.replace(/[，。！？；：、,.!?;:()（）【】[\]\-—"'“”‘’]/g, '').length;
+  const sentenceCount = Math.max(1, normalized.split(/[。！？；]/).filter(Boolean).length);
+  const commaPauseCount = (normalized.match(/[，、：]/g) || []).length;
+  const stopPauseCount = (normalized.match(/[。！？；]/g) || []).length;
+
+  const base =
+    contentLength <= 6 ? 1.8 :
+    contentLength <= 12 ? 2.3 :
+    2.2 + contentLength / 7.5;
+  const pauseAllowance = commaPauseCount * 0.16 + stopPauseCount * 0.28 + Math.max(0, sentenceCount - 1) * 0.18;
+
+  return Number(Math.max(1.8, Math.min(8.5, base + pauseAllowance)).toFixed(1));
 }
 
 function shotTitle(line: string, order: number) {
   return cleanLine(line)
     .replace(/^\d+[.、]\s*/, '')
-    .replace(/^第\d+步[：:\s]*/, '')
+    .replace(/^第[一二三四五六七八九十\d]+步[：:\s]*/, '')
+    .replace(/^步骤[一二三四五六七八九十\d]+[：:\s]*/, '')
     .replace(/^[一二三四五六七八九十]+、\s*/, '')
     .replace(/^补充说明\s*\d+[：:\s]*/, '')
     .split(/[。；;]/)[0]
@@ -45,31 +138,57 @@ function splitBodyLines(script: Script, tutorial?: Tutorial) {
     .split(/\n+/)
     .map(cleanLine)
     .filter((line) => line && !/^总结一下/.test(line))
-    .filter((line) => !/^补充说明\s*\d+/.test(line));
+    .filter((line) => !/^补充说明\s*\d+$/.test(line))
+    .filter((line) => !isLowSignalLine(line));
 
   const structured = bodyLines.filter((line) => (
     /^\d+[.、]/.test(line) ||
-    /^[一二三四五六七八九十]+、/.test(line)
+    /^[一二三四五六七八九十]+、/.test(line) ||
+    /^.{2,36}[:：]\s*.+$/.test(line)
   ));
-  if (structured.length >= 6) return structured;
+  const expandedStructured = (structured.length >= 4 ? structured : bodyLines)
+    .flatMap((line) => {
+      const parsed = parseBodyShot(line, 1);
+      if (!parsed) return [];
+
+      const clauses = splitNarrativeClauses(parsed.voiceover);
+      if (clauses.length >= 2 && parsed.voiceover.length >= 34) {
+        return clauses.map((clause) => `${parsed.title}：${clause}`);
+      }
+      return line;
+    })
+    .filter((line) => !isLowSignalLine(line))
+    .slice(0, 28);
+
+  if (structured.length >= 4) return expandedStructured;
 
   if (tutorial?.steps.length) {
-    const stepLines = tutorial.steps.map((step) => cleanLine([step.title, step.detail].filter(Boolean).join('：')));
-    return bodyLines.length >= 4 ? [...bodyLines, ...stepLines].slice(0, 28) : stepLines.slice(0, 28);
+    const stepLines = tutorial.steps
+      .map((step) => cleanLine([step.title, step.detail].filter(Boolean).join('：')))
+      .filter((line) => !isLowSignalLine(line));
+    return [...expandedStructured, ...stepLines]
+      .filter((line) => !isLowSignalLine(line))
+      .slice(0, 28);
   }
 
-  return bodyLines;
+  return expandedStructured;
 }
 
 function parseBodyShot(line: string, fallbackOrder: number) {
-  const withoutOrder = cleanLine(line).replace(/^\d+[.、]\s*/, '');
+  const withoutOrder = cleanLine(line)
+    .replace(/^\d+[.、]\s*/, '')
+    .replace(/^第[一二三四五六七八九十\d]+步[：:\s]*/, '')
+    .replace(/^步骤[一二三四五六七八九十\d]+[：:\s]*/, '');
   const match = withoutOrder.match(/^(.{2,36}?)[：:]\s*(.+)$/);
   if (!match) {
-    return { title: withoutOrder, voiceover: withoutOrder };
+    const voiceover = stripDirectorNotes(withoutOrder);
+    if (isLowSignalLine(voiceover)) return null;
+    return { title: withoutOrder, voiceover };
   }
   const title = cleanLine(match[1]) || `镜头 ${fallbackOrder}`;
-  const voiceover = cleanLine(match[2]) || withoutOrder;
-  return { title, voiceover };
+  const voiceover = stripDirectorNotes(match[2]) || stripDirectorNotes(withoutOrder);
+  if (isLowSignalLine(voiceover)) return null;
+  return { title: isLowSignalLine(title) ? voiceover : title, voiceover };
 }
 
 function inferBodyShotType(text: string, index: number, total: number): VideoShotType {
@@ -113,14 +232,15 @@ export function buildScriptShotBreakdown(script: Script, tutorial?: Tutorial): S
   const shots: ScriptShotBreakdownItem[] = [];
   const pushShot = (shotType: VideoShotType, title: string, voiceover: string) => {
     const order = shots.length + 1;
-    const text = cleanLine(voiceover).replace(/^\d+[.、]\s*/, '');
+    const text = stripDirectorNotes(voiceover).replace(/^\d+[.、]\s*/, '');
+    if (isLowSignalLine(text)) return;
     const nextTitle = shotTitle(title || text, order);
     shots.push({
       order,
       shotType,
       title: nextTitle,
       voiceover: text,
-      subtitle: clip(text, 72),
+      subtitle: clip(text, 34),
       visualPrompt: inferVisualPrompt(text, nextTitle, shotType),
       visualType: inferVisualType(text, shotType),
       durationSec: estimateDuration(text)
@@ -131,6 +251,7 @@ export function buildScriptShotBreakdown(script: Script, tutorial?: Tutorial): S
   const bodyLines = splitBodyLines(script, tutorial);
   bodyLines.forEach((line, index) => {
     const parsed = parseBodyShot(line, shots.length + 1);
+    if (!parsed) return;
     const shotType = inferBodyShotType(parsed.voiceover, index, bodyLines.length);
     pushShot(shotType, parsed.title, parsed.voiceover);
   });

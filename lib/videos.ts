@@ -7,6 +7,7 @@ import { nowIso, readJsonFile, simpleId, writeJsonFile, writeTextFile, ensureDir
 import { commandExists, getExecutablePath } from './runtime/commands';
 import { generatedRelativePath, publicPathFromRelative, resolveAppPath } from './runtime/paths';
 import { buildScriptShotBreakdown } from './script-shots';
+import { planStoryboardWithMiniMax } from './storyboard-planner';
 import { Script, StoryboardReview, Topic, Tutorial, VideoAspectRatio, VideoAsset, VideoOpsStatus, VideoProject, VideoPublishTier, VideoScene, VideoShotType, VideoTemplate, VideoVisualPreset, VideoVisualType } from './types';
 
 function formatErrorMessage(error: unknown) {
@@ -46,7 +47,15 @@ function getPresetPalette(preset: VideoVisualPreset) {
 function estimateDuration(text: string, minSeconds = 3) {
   const normalized = text.replace(/\s+/g, ' ').trim();
   if (!normalized) return minSeconds;
-  return Math.max(minSeconds, Math.ceil(normalized.length / 4));
+  const contentLength = normalized.replace(/[，。！？；：、,.!?;:()（）【】[\]\-—"'“”‘’\s]/g, '').length;
+  const commaPauseCount = (normalized.match(/[，、：]/g) || []).length;
+  const stopPauseCount = (normalized.match(/[。！？；]/g) || []).length;
+  const base =
+    contentLength <= 6 ? 1.8 :
+    contentLength <= 12 ? 2.3 :
+    2.2 + contentLength / 7.5;
+  const pauseAllowance = commaPauseCount * 0.16 + stopPauseCount * 0.28;
+  return Number(Math.max(Math.min(minSeconds, 1.8), Math.min(8.5, base + pauseAllowance)).toFixed(1));
 }
 
 function normalizeBodyLines(script: Script) {
@@ -78,6 +87,7 @@ function buildScene(params: {
   visualPrompt: string;
   voiceover: string;
   subtitle?: string;
+  durationSec?: number;
   layout?: VideoScene['layout'];
   headline?: string;
   emphasis?: string;
@@ -96,7 +106,7 @@ function buildScene(params: {
     visualPrompt: params.visualPrompt,
     voiceover: params.voiceover,
     subtitle,
-    durationSec: estimateDuration(params.voiceover),
+    durationSec: Number.isFinite(params.durationSec) ? Number(params.durationSec) : estimateDuration(params.voiceover),
     layout: params.layout,
     headline: params.headline,
     emphasis: params.emphasis,
@@ -125,6 +135,38 @@ function sceneCards(text: string, maxItems = 4) {
   return text.match(/.{1,12}/g)?.slice(0, maxItems) || [text];
 }
 
+function shortenFragment(text: string, maxLength: number) {
+  const cleaned = text
+    .replace(/^\d+[.、]\s*/, '')
+    .replace(/[《》"'“”‘’]/g, '')
+    .replace(/^(所以|然后|最后|因此|同时|另外|其实|就是|我们|你会发现|这里要|先把|需要把)/, '')
+    .trim();
+  if (!cleaned) return '';
+  return cleaned.slice(0, maxLength);
+}
+
+function buildHeadline(text: string, fallback: string, maxLength = 16) {
+  const clauses = text
+    .split(/[，。！？；：]/)
+    .map((item) => shortenFragment(item, maxLength))
+    .filter((item) => item.length >= 4);
+  return (clauses[0] || shortenFragment(fallback, maxLength) || fallback.slice(0, maxLength)).slice(0, maxLength);
+}
+
+function buildSceneCards(text: string, layout: VideoScene['layout'], fallbackTerms: string[] = []) {
+  const clauses = text
+    .split(/[。！？；]/)
+    .flatMap((sentence) => sentence.split(/[，、]/))
+    .map((item) => shortenFragment(item, layout === 'timeline' ? 10 : 12))
+    .filter((item) => item.length >= 2);
+
+  const deduped = Array.from(new Set([...clauses, ...fallbackTerms.map((item) => shortenFragment(item, 10)).filter(Boolean)]));
+  const maxItems = layout === 'process' || layout === 'timeline' ? 3 : layout === 'network' || layout === 'matrix' ? 4 : 4;
+
+  if (deduped.length) return deduped.slice(0, maxItems);
+  return sceneCards(text, maxItems).map((item) => shortenFragment(item, 10)).filter(Boolean);
+}
+
 function inferSemanticLayout(text: string, shotType: VideoShotType, order: number) {
   const normalized = text.replace(/^\d+[.、]\s*/, '').trim();
   if (shotType === 'title') return 'hero' as const;
@@ -144,7 +186,10 @@ function inferSemanticLayout(text: string, shotType: VideoShotType, order: numbe
   if (/层级|优先级|金字塔|底层|顶层/.test(normalized)) return 'pyramid' as const;
   if (/矩阵|维度|拆成.*块|象限/.test(normalized)) return 'matrix' as const;
   if (/清单|核对|检查|要点|标准/.test(normalized)) return 'checklist' as const;
-  if (/流程|步骤|怎么做|操作|设置|执行/.test(normalized)) return 'process' as const;
+  if (shotType === 'step' && /系统|模块|角色|客户|团队|部门|协作|联动|环节/.test(normalized)) return 'network' as const;
+  if (shotType === 'step' && /目标|范围|原则|条件|前提|维度|类型|分类/.test(normalized)) return 'matrix' as const;
+  if (shotType === 'step' && /检查|确认|确保|准备|避免|不要/.test(normalized)) return 'checklist' as const;
+  if (/流程|步骤|操作|设置|执行/.test(normalized)) return 'process' as const;
   return chooseAiLayout(shotType, order);
 }
 
@@ -159,7 +204,7 @@ function chooseAiLayout(shotType: VideoShotType, order: number) {
     const variants = ['chart', 'matrix', 'checklist'] as const;
     return variants[(order - 1) % variants.length];
   }
-  const variants = ['process', 'timeline', 'network', 'checklist', 'matrix', 'pyramid'] as const;
+  const variants = ['timeline', 'network', 'matrix', 'checklist', 'pyramid', 'process'] as const;
   return variants[(order - 1) % variants.length];
 }
 
@@ -179,7 +224,7 @@ function aiSceneMetadata(params: {
       : params.shotType === 'cta'
         ? params.script.cta || cleanedText
         : cleanedText;
-  const headline = titleSource.slice(0, 22);
+  const headline = buildHeadline(titleSource, params.script.title, params.shotType === 'title' ? 14 : 16);
   const emphasis =
     params.shotType === 'title'
       ? params.topic.angle
@@ -187,11 +232,11 @@ function aiSceneMetadata(params: {
         ? '立即执行'
         : sceneKeywords(cleanedText, [params.topic.painPoint]).find((item) => item !== headline)?.slice(0, 14);
   const keywords = sceneKeywords(cleanedText, [params.topic.title, params.topic.angle, ...(params.tutorial.tags || []).slice(0, 2)]);
-  const cards = sceneCards(cleanedText);
+  const cards = buildSceneCards(cleanedText, layout, keywords);
   const chartData =
     params.shotType === 'result'
       ? [26, 44, 58, 76, 91]
-      : params.shotType === 'step' && (layout === 'matrix' || layout === 'network')
+      : params.shotType === 'step' && (layout === 'matrix' || layout === 'network' || layout === 'pyramid')
         ? [18, 32, 47, 63]
         : undefined;
   const transition =
@@ -201,7 +246,9 @@ function aiSceneMetadata(params: {
         ? 'fade'
         : layout === 'timeline'
           ? 'push'
-          : layout === 'mistake'
+          : layout === 'network'
+            ? 'zoom'
+            : layout === 'mistake'
             ? 'flash'
             : 'wipe';
 
@@ -719,7 +766,7 @@ function ensureScriptTopicTutorialByScript(state: Awaited<ReturnType<typeof read
 
 export function buildStoryboard(project: VideoProject, script: Script, topic: Topic, tutorial: Tutorial): VideoScene[] {
   const scriptShots = buildScriptShotBreakdown(script, tutorial);
-  const useTechTemplate = project.template === 'tech-explainer-v1' || project.template === 'ai-explainer-short-v1';
+  const useTechTemplate = project.template === 'tech-explainer-v1';
 
   return scriptShots.map((shot) => {
     const shotType = shot.shotType;
@@ -736,6 +783,7 @@ export function buildStoryboard(project: VideoProject, script: Script, topic: To
         : shot.visualPrompt,
       voiceover: shot.voiceover,
       subtitle: shot.subtitle,
+      durationSec: shot.durationSec,
       layout: aiMeta?.layout,
       headline: aiMeta?.headline,
       emphasis: aiMeta?.emphasis,
@@ -748,17 +796,27 @@ export function buildStoryboard(project: VideoProject, script: Script, topic: To
 }
 
 export async function buildStoryboardWithPlanner(project: VideoProject, script: Script, topic: Topic, tutorial: Tutorial): Promise<VideoScene[]> {
-  const fallbackScenes = buildStoryboard(project, script, topic, tutorial);
-  await appendStoryboardReview({
-    projectId: project.id,
-    source: 'rule-fallback',
-    score: 0,
-    issues: ['使用客户确认的脚本镜头拆解'],
-    retried: false,
-    usedFallback: true,
-    scenes: fallbackScenes
-  });
-  return fallbackScenes;
+  try {
+    const planned = await planStoryboardWithMiniMax({ project, script, topic, tutorial });
+    if (planned?.scenes?.length) {
+      await appendStoryboardReview({
+        projectId: project.id,
+        source: 'minimax',
+        model: planned.model,
+        endpoint: planned.endpoint,
+        score: planned.quality.score,
+        issues: planned.quality.issues,
+        reasons: planned.quality.reasons,
+        retried: planned.retried,
+        usedFallback: false,
+        scenes: planned.scenes
+      });
+      return planned.scenes;
+    }
+    throw new Error('MiniMax storyboard planner is unavailable and fallback is disabled');
+  } catch (error) {
+    throw new Error(`Storyboard planner failed: ${formatErrorMessage(error)}`);
+  }
 }
 
 async function appendStoryboardReview(params: {
@@ -768,6 +826,7 @@ async function appendStoryboardReview(params: {
   endpoint?: string;
   score: number;
   issues: string[];
+  reasons?: string[];
   retried: boolean;
   usedFallback: boolean;
   scenes: VideoScene[];
@@ -786,6 +845,7 @@ async function appendStoryboardReview(params: {
     endpoint: params.endpoint,
     score: params.score,
     issues: params.issues,
+    reasons: params.reasons,
     retried: params.retried,
     usedFallback: params.usedFallback,
     sceneCount: params.scenes.length,

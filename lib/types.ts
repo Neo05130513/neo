@@ -4,6 +4,7 @@ export type TopicAngle = '痛点型' | '方法论型' | '工具实操型' | '避
 export type Platform = 'document' | 'douyin' | 'kuaishou' | 'bilibili' | 'article';
 export type VideoProjectStatus = 'draft' | 'storyboarded' | 'rendering' | 'completed' | 'failed';
 export type RenderJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type PipelineJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type VideoTemplate = 'tutorial-demo-v1' | 'tech-explainer-v1' | 'ai-explainer-short-v1';
 export type VideoShotType = 'title' | 'pain' | 'step' | 'result' | 'cta';
 export type VideoVisualType = 'slide' | 'screen' | 'image' | 'caption';
@@ -196,6 +197,52 @@ export interface RenderJob {
   progress?: number;
 }
 
+export interface PipelineScriptPreview {
+  id: string;
+  title: string;
+  hook: string;
+}
+
+export interface PipelineJobResult {
+  tutorialId: string;
+  tutorialTitle: string;
+  topicCount: number;
+  scriptCount: number;
+  scripts: PipelineScriptPreview[];
+  firstScriptId?: string;
+  firstScriptTitle?: string;
+  firstScriptShots?: Array<{
+    order: number;
+    title: string;
+    voiceover: string;
+    subtitle: string;
+    visualPrompt: string;
+    durationSec: number;
+  }>;
+}
+
+export interface PipelineJob {
+  id: string;
+  tutorialId: string;
+  status: PipelineJobStatus;
+  stage: string;
+  progress: number;
+  detail?: string;
+  previewText?: string;
+  currentTopicTitle?: string;
+  currentTopicIndex?: number;
+  totalTopics?: number;
+  attempt?: number;
+  maxAttempts?: number;
+  elapsedMs?: number;
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+  result?: PipelineJobResult;
+}
+
 export interface QualityReview {
   id: string;
   projectId: string;
@@ -219,6 +266,7 @@ export interface StoryboardReview {
   endpoint?: string;
   score: number;
   issues: string[];
+  reasons?: string[];
   retried: boolean;
   usedFallback: boolean;
   sceneCount: number;

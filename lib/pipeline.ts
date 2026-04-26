@@ -10,6 +10,34 @@ import { ensureDirectory, nowIso, readJsonFile, simpleId, writeJsonFile } from '
 import { resolveDataPath, resolveRuntimePath, toPosixRelativePath } from './runtime/paths';
 import { Script, SourceType, Topic, Tutorial } from './types';
 
+export interface TutorialPipelineProgress {
+  stage: string;
+  progress: number;
+  detail?: string;
+  previewText?: string;
+  currentTopicTitle?: string;
+  currentTopicIndex?: number;
+  totalTopics?: number;
+  attempt?: number;
+  maxAttempts?: number;
+  elapsedMs?: number;
+}
+
+export interface TutorialPipelineResult {
+  tutorial: Tutorial;
+  topics: Topic[];
+  scripts: Script[];
+  scriptShots: Array<{
+    scriptId: string;
+    shots: ReturnType<typeof buildScriptShotBreakdown>;
+  }>;
+}
+
+function throwIfPipelineAborted(signal?: AbortSignal) {
+  if (!signal?.aborted) return;
+  throw new Error(typeof signal.reason === 'string' ? signal.reason : '用户已停止脚本生成');
+}
+
 interface ImportInput {
   sourceFile: string;
   sourceType: SourceType;
@@ -92,7 +120,24 @@ export async function importTutorials(inputs: ImportInput[]) {
   return { created, duplicates };
 }
 
-export async function processTutorialPipeline(tutorialId: string) {
+export async function processTutorialPipeline(
+  tutorialId: string,
+  options?: { signal?: AbortSignal; onProgress?: (progress: TutorialPipelineProgress) => void | Promise<void> }
+): Promise<TutorialPipelineResult> {
+  const emitProgress = async (progress: TutorialPipelineProgress) => {
+    throwIfPipelineAborted(options?.signal);
+    await options?.onProgress?.({
+      ...progress,
+      progress: Math.max(0, Math.min(100, Math.round(progress.progress)))
+    });
+  };
+
+  await emitProgress({
+    stage: 'loading',
+    progress: 5,
+    detail: '正在读取教程、选题和脚本数据。'
+  });
+  throwIfPipelineAborted(options?.signal);
   const tutorials = await readJsonFile<Tutorial[]>('data/tutorials.json');
   const topics = await readJsonFile<Topic[]>('data/topics.json');
   const scripts = await readJsonFile<Script[]>('data/scripts.json');
@@ -102,22 +147,93 @@ export async function processTutorialPipeline(tutorialId: string) {
     throw new Error('Tutorial not found');
   }
 
+  await emitProgress({
+    stage: 'parsing-tutorial',
+    progress: 20,
+    detail: '正在解析文档内容。'
+  });
+  throwIfPipelineAborted(options?.signal);
   const parsed = parseTutorial(tutorials[tutorialIndex]);
   tutorials[tutorialIndex] = parsed;
 
-  const generatedTopics = generateTopics(parsed);
+  await emitProgress({
+    stage: 'generating-topics',
+    progress: 36,
+    detail: '正在从文档中提炼选题。'
+  });
+  const generatedTopics = await generateTopics(parsed);
   const nextTopics = [...generatedTopics, ...topics.filter((item) => item.tutorialId !== tutorialId)];
+  const totalTopics = generatedTopics.length;
 
-  const generatedScripts = (await Promise.all(generatedTopics.map((topic) => generateScripts(topic, parsed)))).flat();
+  await emitProgress({
+    stage: 'topics-ready',
+    progress: 46,
+    detail: totalTopics ? 'MiniMax 已生成主选题，开始撰写主脚本。' : '没有生成可用选题。',
+    totalTopics
+  });
+
+  const generatedScripts: Script[] = [];
+  for (const [index, topic] of generatedTopics.entries()) {
+    throwIfPipelineAborted(options?.signal);
+    const topicIndex = index + 1;
+    const topicStart = 48 + ((topicIndex - 1) / Math.max(totalTopics, 1)) * 40;
+    const topicSpan = 40 / Math.max(totalTopics, 1);
+
+    await emitProgress({
+      stage: 'generating-script',
+      progress: topicStart,
+      detail: `正在生成主脚本：${topic.title}`,
+      currentTopicIndex: topicIndex,
+      totalTopics,
+      currentTopicTitle: topic.title
+    });
+
+    // Avoid bursty parallel text-generation requests that make MiniMax time out.
+    const nextScripts = await generateScripts(topic, parsed, {
+      signal: options?.signal,
+      onProgress: async (progress) => {
+        const phaseRatio = progress.stage === 'requesting-model' ? 0.45 : progress.stage === 'validating-result' ? 0.78 : 1;
+        await emitProgress({
+          stage: progress.stage,
+          progress: topicStart + topicSpan * phaseRatio,
+          detail: progress.detail,
+          previewText: progress.previewText,
+          currentTopicIndex: topicIndex,
+          totalTopics,
+          currentTopicTitle: topic.title,
+          attempt: progress.attempt,
+          maxAttempts: progress.maxAttempts,
+          elapsedMs: progress.elapsedMs
+        });
+      }
+    });
+    generatedScripts.push(...nextScripts);
+    const latestScript = nextScripts[0];
+    await emitProgress({
+      stage: 'script-ready',
+      progress: topicStart + topicSpan,
+      detail: `主脚本已完成：${latestScript?.title || topic.title}`,
+      previewText: latestScript ? `${latestScript.title}｜${latestScript.hook}` : undefined,
+      currentTopicIndex: topicIndex,
+      totalTopics,
+      currentTopicTitle: topic.title
+    });
+  }
   const nextScripts = [...generatedScripts, ...scripts.filter((item) => item.tutorialId !== tutorialId)];
 
+  await emitProgress({
+    stage: 'saving-results',
+    progress: 94,
+    detail: '正在写入教程、选题和脚本结果。'
+  });
+  throwIfPipelineAborted(options?.signal);
   await Promise.all([
     writeJsonFile('data/tutorials.json', tutorials),
     writeJsonFile('data/topics.json', nextTopics),
     writeJsonFile('data/scripts.json', nextScripts)
   ]);
 
-  return {
+  const result = {
     tutorial: parsed,
     topics: generatedTopics,
     scripts: generatedScripts,
@@ -126,4 +242,12 @@ export async function processTutorialPipeline(tutorialId: string) {
       shots: buildScriptShotBreakdown(script, parsed)
     }))
   };
+  await emitProgress({
+    stage: 'completed',
+    progress: 100,
+    detail: `处理完成，生成了 ${generatedScripts.length} 条脚本。`,
+    previewText: result.scripts[0] ? `${result.scripts[0].title}｜${result.scripts[0].hook}` : undefined,
+    totalTopics
+  });
+  return result;
 }

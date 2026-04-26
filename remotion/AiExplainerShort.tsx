@@ -78,6 +78,14 @@ const shotMeta: Record<RemotionSceneInput['shotType'], { label: string; eyebrow:
   cta: { label: 'NEXT ACTION', eyebrow: '下一步', mark: '05' }
 };
 
+const radius = {
+  stage: 34,
+  panel: 30,
+  card: 24,
+  chip: 18,
+  pill: 999
+} as const;
+
 function sceneFrames(scene: RemotionSceneInput) {
   return Math.max(1, Math.round(scene.durationSec * FPS));
 }
@@ -125,14 +133,40 @@ function keyTerms(scene: RemotionSceneInput) {
   return Array.from(new Set(terms)).slice(0, 5);
 }
 
+function displaySeeds(scene: RemotionSceneInput) {
+  return Array.from(new Set([
+    ...(scene.cards || []),
+    scene.headline || '',
+    scene.subtitle || '',
+    scene.emphasis || '',
+    ...(scene.keywords || [])
+  ].map((item) => compactText(item)).filter((item) => item.length >= 2)));
+}
+
+function displaySummary(scene: RemotionSceneInput, fallback: string, maxChars: number, maxLines: number) {
+  const seeds = displaySeeds(scene);
+  return splitLines(seeds.length ? seeds.slice(0, maxLines + 1).join(' · ') : fallback, maxChars, maxLines);
+}
+
 function cardItems(scene: RemotionSceneInput) {
   if (scene.cards?.length) return scene.cards.slice(0, 4);
-  const source = compactText(scene.voiceover || scene.subtitle);
-  const parts = source
-    .split(/[。！？；;,.，、]/)
-    .map((item) => item.trim())
-    .filter((item) => item.length >= 3);
-  return (parts.length ? parts : splitLines(source, 12, 4)).slice(0, 4);
+  const seeds = displaySeeds(scene);
+  if (seeds.length) return seeds.map((item) => conciseLabel(item, 12)).slice(0, 4);
+  return ['核心概念', '关键步骤', '结果变化', '下一动作'];
+}
+
+function conciseLabel(text: string, maxChars = 8) {
+  const compact = compactText(text)
+    .replace(/[《》"'“”‘’]/g, '')
+    .replace(/^(所以|然后|最后|因此|同时|另外|其实|就是|我们|你会发现|这里要|需要把|先把)/, '')
+    .trim();
+  return (compact || text).slice(0, maxChars);
+}
+
+function visualTokens(scene: RemotionSceneInput, count: number, maxChars = 8) {
+  const source = [...cardItems(scene), ...keyTerms(scene)];
+  const items = Array.from(new Set(source.map((item) => conciseLabel(item, maxChars)).filter((item) => item.length >= 2)));
+  return items.slice(0, count);
 }
 
 function chartValues(scene: RemotionSceneInput, count: number) {
@@ -145,6 +179,22 @@ function chartValues(scene: RemotionSceneInput, count: number) {
 function metricValue(scene: RemotionSceneInput) {
   const values = chartValues(scene, 5);
   return Math.max(...values);
+}
+
+function staggerReveal(enter: number, index: number, total: number) {
+  const start = 0.16 + index * 0.16;
+  const end = Math.min(0.96, start + 0.26);
+  return clamp(interpolate(enter, [start, end], [0, 1], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp'
+  }), 0, 1);
+}
+
+function typingText(text: string, progress: number) {
+  const compact = compactText(text);
+  if (!compact) return '';
+  const chars = Math.max(1, Math.floor(interpolate(progress, [0, 1], [1, compact.length])));
+  return compact.slice(0, chars);
 }
 
 function sceneMotion(scene: RemotionSceneInput, progress: number) {
@@ -180,6 +230,229 @@ function primaryDisplay(scene: RemotionSceneInput) {
   if (scene.visualType === 'image') return 'data';
   if (scene.shotType === 'step') return 'process';
   return 'cards';
+}
+
+function SceneBackdrop({
+  scene,
+  palette,
+  progress,
+  layout,
+  displayMode
+}: {
+  scene: RemotionSceneInput;
+  palette: AiPalette;
+  progress: number;
+  layout: AiLayout;
+  displayMode: string;
+}) {
+  const isWide = layout.isWide;
+  const tokens = visualTokens(scene, isWide ? 5 : 4, isWide ? 8 : 6);
+  const values = chartValues(scene, 5);
+  const pulse = interpolate(progress, [0, 1], [0.92, 1.08], { easing: Easing.inOut(Easing.ease) });
+
+  if (displayMode === 'process' || displayMode === 'timeline') {
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          left: isWide ? 72 : 40,
+          right: isWide ? 72 : 40,
+          top: isWide ? 150 : 220,
+          height: isWide ? 180 : 220,
+          opacity: 0.48
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: isWide ? 88 : 104,
+            height: 2,
+            background: `linear-gradient(90deg, transparent, ${palette.accent}, ${palette.positive}, transparent)`
+          }}
+        />
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${tokens.length || 3}, minmax(0, 1fr))`, gap: 20 }}>
+          {(tokens.length ? tokens : ['拆目标', '搭结构', '出结果']).map((token, index) => (
+            <div key={`${token}-${index}`} style={{ display: 'grid', justifyItems: 'center', gap: 12 }}>
+              <div
+                style={{
+                  width: isWide ? 88 : 76,
+                  height: isWide ? 88 : 76,
+                  borderRadius: 999,
+                  border: `1px solid ${palette.line}`,
+                  display: 'grid',
+                  placeItems: 'center',
+                  background: index % 2 === 0 ? `${palette.accent}18` : `${palette.accent2}18`,
+                  boxShadow: `0 0 28px ${index % 2 === 0 ? palette.accent : palette.accent2}22`,
+                  transform: `scale(${index === 1 ? pulse : 1})`
+                }}
+              >
+                <div style={{ color: palette.text, fontSize: isWide ? 26 : 22, fontWeight: 950 }}>
+                  {String(index + 1).padStart(2, '0')}
+                </div>
+              </div>
+              <div style={{ color: palette.muted, fontSize: isWide ? 18 : 16, fontWeight: 820 }}>{token}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (displayMode === 'data' || displayMode === 'result') {
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          left: isWide ? 80 : 48,
+          right: isWide ? 80 : 48,
+          top: isWide ? 152 : 212,
+          height: isWide ? 260 : 220,
+          opacity: 0.34,
+          display: 'flex',
+          alignItems: 'end',
+          gap: 18
+        }}
+      >
+        {values.map((value, index) => (
+          <div key={`${value}-${index}`} style={{ flex: 1, display: 'grid', gap: 8, alignItems: 'end' }}>
+            <div
+              style={{
+                height: `${Math.max(18, value * (isWide ? 1.5 : 1.2))}px`,
+                borderRadius: '18px 18px 0 0',
+                background: `linear-gradient(180deg, ${index % 2 ? palette.accent2 : palette.accent}, ${palette.positive})`,
+                boxShadow: `0 0 34px ${palette.accent}18`,
+                transform: `scaleY(${interpolate(progress, [0, 1], [0.3, 1])})`,
+                transformOrigin: 'bottom center'
+              }}
+            />
+            <div style={{ color: palette.muted, fontSize: 15, textAlign: 'center', fontWeight: 800 }}>{index + 1}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (displayMode === 'network' || displayMode === 'matrix' || displayMode === 'pyramid') {
+    const dots = tokens.length ? tokens : ['目标', '流程', '素材', '结果'];
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          left: isWide ? 74 : 34,
+          right: isWide ? 74 : 34,
+          top: isWide ? 142 : 210,
+          height: isWide ? 250 : 250,
+          opacity: 0.36
+        }}
+      >
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+          {dots.map((_, index) => {
+            const x1 = 18 + (index % 3) * 28;
+            const y1 = 24 + Math.floor(index / 3) * 28;
+            const x2 = 50;
+            const y2 = displayMode === 'pyramid' ? 18 : 54;
+            return (
+              <line
+                key={`line-${index}`}
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+                stroke={palette.line}
+                strokeWidth="0.5"
+                strokeDasharray="2 2"
+              />
+            );
+          })}
+        </svg>
+        {dots.map((token, index) => {
+          const left = displayMode === 'pyramid' ? 18 + index * 18 : 10 + (index % 3) * 28;
+          const top = displayMode === 'pyramid' ? 160 - Math.floor(index / 2) * 54 : 36 + Math.floor(index / 3) * 74;
+          return (
+            <div
+              key={`${token}-${index}`}
+              style={{
+                position: 'absolute',
+                left: `${left}%`,
+                top,
+                minWidth: isWide ? 120 : 96,
+                padding: '12px 14px',
+                borderRadius: radius.card,
+                border: `1px solid ${palette.line}`,
+                background: index % 2 === 0 ? `${palette.accent}16` : `${palette.accent2}16`,
+                color: palette.text,
+                fontSize: isWide ? 18 : 16,
+                fontWeight: 820,
+                textAlign: 'center'
+              }}
+            >
+              {token}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        right: isWide ? 72 : 40,
+        top: isWide ? 150 : 220,
+        width: isWide ? 320 : 240,
+        height: isWide ? 220 : 180,
+        opacity: 0.26
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: radius.stage,
+          border: `1px solid ${palette.line}`,
+          background: palette.surfaceStrong,
+          overflow: 'hidden'
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          left: 18,
+          right: 18,
+          top: 22,
+          height: 12,
+          borderRadius: 999,
+          background: `linear-gradient(90deg, ${palette.accent}, ${palette.accent2})`
+        }}
+      />
+      {visualTokens(scene, 3, 10).map((token, index) => (
+        <div
+          key={`${token}-${index}`}
+          style={{
+            position: 'absolute',
+          left: 18,
+          right: 18,
+          top: 58 + index * 42,
+          height: 26,
+          borderRadius: radius.chip,
+          border: `1px solid ${palette.line}`,
+          background: 'rgba(255,255,255,0.04)',
+            color: palette.muted,
+            fontSize: 16,
+            fontWeight: 800,
+            paddingLeft: 12,
+            display: 'grid',
+            alignItems: 'center'
+          }}
+        >
+          {token}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function Background({ palette, progress }: { palette: AiPalette; progress: number }) {
@@ -302,6 +575,7 @@ function Header({
           style={{
             width: 72,
             height: 72,
+            borderRadius: radius.card,
             display: 'grid',
             placeItems: 'center',
             border: `1px solid ${palette.line}`,
@@ -324,8 +598,8 @@ function Header({
             <div key={`${line}-${index}`}>{line}</div>
           ))}
         </div>
-        <div style={{ height: 6, marginTop: 12, background: 'rgba(255,255,255,0.13)', overflow: 'hidden' }}>
-          <div style={{ width: `${((sceneIndex + 1) / sceneCount) * 100}%`, height: '100%', background: palette.accent }} />
+        <div style={{ height: 6, marginTop: 12, borderRadius: radius.pill, background: 'rgba(255,255,255,0.13)', overflow: 'hidden' }}>
+          <div style={{ width: `${((sceneIndex + 1) / sceneCount) * 100}%`, height: '100%', borderRadius: radius.pill, background: palette.accent }} />
         </div>
       </div>
     </div>
@@ -337,6 +611,7 @@ function HeroPanel({ scene, palette, enter, layout }: { scene: RemotionSceneInpu
   const title = splitLines(scene.headline || scene.subtitle, isWide ? 16 : 12, isWide ? 2 : 3);
   const emphasis = scene.emphasis || keyTerms(scene)[0] || 'AI';
   const terms = keyTerms(scene).slice(0, 3);
+  const summary = displaySummary(scene, '核心信息逐项展开', isWide ? 16 : 12, 3);
   return (
     <div
       style={{
@@ -368,6 +643,7 @@ function HeroPanel({ scene, palette, enter, layout }: { scene: RemotionSceneInpu
           width: 'fit-content',
           maxWidth: '100%',
           padding: isWide ? '14px 22px' : '18px 26px',
+          borderRadius: radius.card,
           color: '#020617',
           background: `linear-gradient(90deg, ${palette.accent}, ${palette.positive})`,
           fontSize: isWide ? 26 : 30,
@@ -377,7 +653,7 @@ function HeroPanel({ scene, palette, enter, layout }: { scene: RemotionSceneInpu
         {emphasis}
       </div>
       <div style={{ color: palette.muted, fontSize: isWide ? 27 : 30, lineHeight: 1.48, maxWidth: isWide ? 720 : 840 }}>
-        {splitLines(scene.voiceover, isWide ? 30 : 22, isWide ? 3 : 3).map((line, index) => (
+        {summary.map((line, index) => (
           <div key={`${line}-${index}`}>{line}</div>
         ))}
       </div>
@@ -387,6 +663,7 @@ function HeroPanel({ scene, palette, enter, layout }: { scene: RemotionSceneInpu
             key={`${term}-${index}`}
             style={{
               padding: isWide ? '10px 16px' : '12px 18px',
+              borderRadius: radius.chip,
               border: `1px solid ${index === 0 ? palette.accent : palette.line}`,
               background: index === 0 ? `${palette.accent}18` : 'rgba(255,255,255,0.05)',
               color: index === 0 ? palette.accent : palette.text,
@@ -407,12 +684,14 @@ function HeroPanel({ scene, palette, enter, layout }: { scene: RemotionSceneInpu
             top: 164,
             width: 500,
             height: 560,
+            borderRadius: radius.panel,
             border: `1px solid ${palette.line}`,
             background: palette.surfaceStrong,
             display: 'grid',
             gridTemplateRows: 'auto auto 1fr',
             gap: 18,
-            padding: 38
+            padding: 38,
+            overflow: 'hidden'
           }}
         >
           <div style={{ color: palette.accent, fontSize: 22, fontWeight: 950 }}>内容信号</div>
@@ -435,8 +714,10 @@ function HeroPanel({ scene, palette, enter, layout }: { scene: RemotionSceneInpu
                   gridTemplateColumns: '72px 1fr 96px',
                   alignItems: 'center',
                   minHeight: 76,
+                  borderRadius: radius.card,
                   border: `1px solid ${palette.line}`,
-                  background: index === 0 ? `${palette.accent}14` : palette.surface
+                  background: index === 0 ? `${palette.accent}14` : palette.surface,
+                  overflow: 'hidden'
                 }}
               >
                 <div
@@ -468,7 +749,7 @@ function HeroPanel({ scene, palette, enter, layout }: { scene: RemotionSceneInpu
 function InsightCards({ scene, palette, enter, layout }: { scene: RemotionSceneInput; palette: AiPalette; enter: number; layout: AiLayout }) {
   const items = cardItems(scene);
   const isWide = layout.isWide;
-  const detailLines = splitLines(scene.voiceover, isWide ? 16 : 14, 8);
+  const detailTokens = visualTokens(scene, 6, isWide ? 8 : 6);
   return (
     <div
       style={{
@@ -488,6 +769,7 @@ function InsightCards({ scene, palette, enter, layout }: { scene: RemotionSceneI
           style={{
             minHeight: isWide ? 410 : 154,
             padding: isWide ? 28 : 24,
+            borderRadius: radius.panel,
             border: `1px solid ${palette.line}`,
             background: index === 0 ? palette.surfaceStrong : palette.surface,
             transform: `translateY(${interpolate(enter, [0, 1], [30 + index * 10, 0])}px)`,
@@ -507,11 +789,12 @@ function InsightCards({ scene, palette, enter, layout }: { scene: RemotionSceneI
             </div>
           </div>
           <div style={{ display: 'grid', gap: 10 }}>
-            {detailLines.slice(index, index + (isWide ? 2 : 1)).map((line, lineIndex) => (
+            {detailTokens.slice(index * (isWide ? 2 : 1), index * (isWide ? 2 : 1) + (isWide ? 2 : 1)).map((line, lineIndex) => (
               <div
                 key={`${line}-${lineIndex}`}
                 style={{
                   padding: '10px 12px',
+                  borderRadius: radius.chip,
                   border: `1px solid ${palette.line}`,
                   background: 'rgba(255,255,255,0.04)',
                   color: palette.muted,
@@ -533,7 +816,7 @@ function InsightCards({ scene, palette, enter, layout }: { scene: RemotionSceneI
 function ProcessStrip({ scene, palette, enter, layout }: { scene: RemotionSceneInput; palette: AiPalette; enter: number; layout: AiLayout }) {
   const items = cardItems(scene).slice(0, 3);
   const isWide = layout.isWide;
-  const detailLines = splitLines(scene.voiceover, isWide ? 18 : 14, 6);
+  const detailTokens = visualTokens(scene, 9, isWide ? 8 : 6);
   return (
     <div
       style={{
@@ -551,14 +834,20 @@ function ProcessStrip({ scene, palette, enter, layout }: { scene: RemotionSceneI
         <div
           key={`${item}-${index}`}
           style={{
-            position: 'relative',
-            display: 'grid',
-            gridTemplateColumns: isWide ? '1fr' : '92px 1fr',
-            gridTemplateRows: isWide ? '92px 1fr auto' : undefined,
-            alignItems: 'stretch',
-            gap: 16
+            opacity: staggerReveal(enter, index, items.length),
+            transform: `translateY(${interpolate(staggerReveal(enter, index, items.length), [0, 1], [28, 0])}px)`
           }}
         >
+          <div
+            style={{
+              position: 'relative',
+              display: 'grid',
+              gridTemplateColumns: isWide ? '1fr' : '92px 1fr',
+              gridTemplateRows: isWide ? '92px 1fr auto' : undefined,
+              alignItems: 'stretch',
+              gap: 16
+            }}
+          >
           {isWide && index < items.length - 1 ? (
             <div
               style={{
@@ -590,6 +879,7 @@ function ProcessStrip({ scene, palette, enter, layout }: { scene: RemotionSceneI
             style={{
               display: 'grid',
               placeItems: 'center',
+              borderRadius: isWide ? radius.card : radius.card,
               background: index === 1 ? palette.accent : palette.surface,
               color: index === 1 ? '#020617' : palette.accent,
               border: `1px solid ${palette.line}`,
@@ -603,6 +893,7 @@ function ProcessStrip({ scene, palette, enter, layout }: { scene: RemotionSceneI
             style={{
               padding: '26px 28px',
               minHeight: isWide ? 250 : undefined,
+              borderRadius: radius.panel,
               background: index === 1 ? `${palette.accent}12` : palette.surface,
               border: `1px solid ${palette.line}`,
               color: palette.text,
@@ -640,19 +931,34 @@ function ProcessStrip({ scene, palette, enter, layout }: { scene: RemotionSceneI
               <div style={{ color: palette.muted, fontSize: 18, fontWeight: 800 }}>
                 {index === 0 ? '先建立结论' : index === 1 ? '再展开结构' : '最后补足证据'}
               </div>
-              {detailLines.slice(index * 2, index * 2 + 2).map((line, lineIndex) => (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', maxWidth: '92%' }}>
+                {detailTokens.slice(index * 3, index * 3 + 3).map((line, lineIndex) => (
+                  <div
+                    key={`${line}-${lineIndex}`}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: radius.chip,
+                      border: `1px solid ${palette.line}`,
+                      background: 'rgba(255,255,255,0.05)',
+                      color: palette.muted,
+                      fontSize: isWide ? 16 : 18,
+                      lineHeight: 1.1,
+                      fontWeight: 760
+                    }}
+                  >
+                    {line}
+                  </div>
+                ))}
+              </div>
+              {[0, 1].map((lineIndex) => (
                 <div
-                  key={`${line}-${lineIndex}`}
+                  key={`${index}-${lineIndex}`}
                   style={{
-                    color: palette.muted,
-                    fontSize: isWide ? 18 : 20,
-                    lineHeight: 1.24,
-                    fontWeight: 760,
-                    maxWidth: '90%'
+                    height: 6,
+                    width: `${72 - lineIndex * 16}%`,
+                    background: lineIndex === 0 ? `linear-gradient(90deg, ${palette.accent}, ${palette.accent2})` : 'rgba(255,255,255,0.12)'
                   }}
-                >
-                  {line}
-                </div>
+                />
               ))}
             </div>
           </div>
@@ -660,6 +966,7 @@ function ProcessStrip({ scene, palette, enter, layout }: { scene: RemotionSceneI
             <div
               style={{
                 height: 6,
+                borderRadius: radius.pill,
                 background: 'rgba(255,255,255,0.08)',
                 overflow: 'hidden',
                 border: `1px solid ${palette.line}`
@@ -669,11 +976,13 @@ function ProcessStrip({ scene, palette, enter, layout }: { scene: RemotionSceneI
                 style={{
                   width: `${72 + index * 12}%`,
                   height: '100%',
+                  borderRadius: radius.pill,
                   background: `linear-gradient(90deg, ${palette.accent}, ${index % 2 ? palette.accent2 : palette.positive})`
                 }}
               />
             </div>
           ) : null}
+          </div>
         </div>
       ))}
     </div>
@@ -700,6 +1009,7 @@ function DataPanel({ scene, palette, enter, progress, layout }: { scene: Remotio
       <div
         style={{
           padding: isWide ? 32 : 26,
+          borderRadius: radius.panel,
           border: `1px solid ${palette.line}`,
           background: palette.surfaceStrong,
           display: 'grid',
@@ -720,8 +1030,8 @@ function DataPanel({ scene, palette, enter, progress, layout }: { scene: Remotio
           {values.slice(-3).map((value, index) => (
             <div key={`${value}-${index}`} style={{ display: 'grid', gridTemplateColumns: '68px 1fr 58px', alignItems: 'center', gap: 12 }}>
               <div style={{ color: palette.muted, fontSize: 16, fontWeight: 800 }}>S0{index + 3}</div>
-              <div style={{ height: 8, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-                <div style={{ width: `${value}%`, height: '100%', background: `linear-gradient(90deg, ${palette.accent}, ${palette.positive})` }} />
+              <div style={{ height: 8, borderRadius: radius.pill, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <div style={{ width: `${value}%`, height: '100%', borderRadius: radius.pill, background: `linear-gradient(90deg, ${palette.accent}, ${palette.positive})` }} />
               </div>
               <div style={{ color: palette.text, fontSize: 18, fontWeight: 850 }}>{value}%</div>
             </div>
@@ -731,6 +1041,7 @@ function DataPanel({ scene, palette, enter, progress, layout }: { scene: Remotio
       <div
         style={{
           padding: isWide ? 34 : 30,
+          borderRadius: radius.panel,
           border: `1px solid ${palette.line}`,
           background: palette.surfaceStrong,
           position: 'relative',
@@ -767,6 +1078,7 @@ function DataPanel({ scene, palette, enter, progress, layout }: { scene: Remotio
               <div
                 style={{
                   height: `${interpolate(progress, [0, 1], [12, value])}%`,
+                  borderRadius: '18px 18px 0 0',
                   background: `linear-gradient(180deg, ${palette.accent}, ${index % 2 ? palette.accent2 : palette.positive})`,
                   border: `1px solid ${palette.line}`,
                   boxShadow: `0 0 24px ${palette.accent}22`
@@ -802,6 +1114,7 @@ function ResultShowcasePanel({ scene, palette, enter, progress, layout }: { scen
         style={{
           minHeight: isWide ? 420 : 260,
           padding: '28px 30px',
+          borderRadius: radius.panel,
           border: `1px solid ${palette.line}`,
           background: palette.surfaceStrong,
           display: 'grid',
@@ -830,8 +1143,10 @@ function ResultShowcasePanel({ scene, palette, enter, progress, layout }: { scen
                 display: 'grid',
                 gridTemplateColumns: '58px 1fr',
                 minHeight: 64,
+                borderRadius: radius.card,
                 border: `1px solid ${palette.line}`,
-                background: index === 0 ? `${palette.positive}14` : 'rgba(255,255,255,0.04)'
+                background: index === 0 ? `${palette.positive}14` : 'rgba(255,255,255,0.04)',
+                overflow: 'hidden'
               }}
             >
               <div
@@ -859,6 +1174,7 @@ function ResultShowcasePanel({ scene, palette, enter, progress, layout }: { scen
         style={{
           minHeight: isWide ? 420 : 240,
           padding: '26px 28px',
+          borderRadius: radius.panel,
           border: `1px solid ${palette.line}`,
           background: palette.surface,
           position: 'relative',
@@ -873,11 +1189,12 @@ function ResultShowcasePanel({ scene, palette, enter, progress, layout }: { scen
                 <span>{['结构清晰', '镜头表达', '信息密度', '成片感'][index] || `指标 ${index + 1}`}</span>
                 <span>{metric}%</span>
               </div>
-              <div style={{ height: 10, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+              <div style={{ height: 10, borderRadius: radius.pill, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
                 <div
                   style={{
                     width: `${interpolate(progress, [0, 1], [10, metric])}%`,
                     height: '100%',
+                    borderRadius: radius.pill,
                     background: `linear-gradient(90deg, ${palette.accent}, ${index % 2 ? palette.accent2 : palette.positive})`
                   }}
                 />
@@ -907,6 +1224,7 @@ function ContrastPanel({ scene, palette, enter, layout }: { scene: RemotionScene
   const items = cardItems(scene).slice(0, 2);
   const isWide = layout.isWide;
   const modeLabel = scene.layout === 'mistake' ? '常见误区' : scene.layout === 'cause' ? '原因拆解' : '前后对比';
+  const summary = displaySummary(scene, modeLabel, isWide ? 18 : 14, 3);
   return (
     <div
       style={{
@@ -924,6 +1242,7 @@ function ContrastPanel({ scene, palette, enter, layout }: { scene: RemotionScene
         style={{
           minHeight: isWide ? 418 : 240,
           padding: isWide ? 34 : 28,
+          borderRadius: radius.panel,
           border: `1px solid ${palette.line}`,
           background: palette.surfaceStrong
         }}
@@ -935,7 +1254,7 @@ function ContrastPanel({ scene, palette, enter, layout }: { scene: RemotionScene
           ))}
         </div>
         <div style={{ color: palette.muted, fontSize: isWide ? 26 : 28, lineHeight: 1.42, marginTop: 22 }}>
-          {splitLines(scene.voiceover, isWide ? 28 : 20, 4).map((line, index) => (
+          {summary.map((line, index) => (
             <div key={`${line}-${index}`}>{line}</div>
           ))}
         </div>
@@ -945,12 +1264,14 @@ function ContrastPanel({ scene, palette, enter, layout }: { scene: RemotionScene
           <div
             key={`${item}-${index}`}
             style={{
+              opacity: staggerReveal(enter, index, items.length),
               minHeight: isWide ? 200 : 150,
               padding: '24px 26px',
+              borderRadius: radius.panel,
               border: `1px solid ${palette.line}`,
               background: index === 0 ? `${palette.alert}18` : `${palette.accent}14`,
               color: palette.text,
-              transform: `translateX(${interpolate(enter, [0, 1], [28 + index * 12, 0])}px)`,
+              transform: `translateX(${interpolate(staggerReveal(enter, index, items.length), [0, 1], [28 + index * 12, 0])}px)`,
               position: 'relative',
               overflow: 'hidden'
             }}
@@ -1007,6 +1328,7 @@ function CauseFlowPanel({ scene, palette, enter, progress, layout }: { scene: Re
             position: 'relative',
             minHeight: isWide ? 280 : 150,
             padding: '22px 24px 24px',
+            borderRadius: radius.card,
             border: `1px solid ${palette.line}`,
             background: index === 1 ? `${palette.accent}14` : palette.surfaceStrong,
             overflow: 'hidden'
@@ -1118,6 +1440,7 @@ function TimelinePanel({ scene, palette, enter, layout }: { scene: RemotionScene
               marginTop: isWide ? 24 : 0,
               minHeight: isWide ? 260 : 120,
               padding: '22px 24px',
+              borderRadius: radius.card,
               border: `1px solid ${palette.line}`,
               background: palette.surface
             }}
@@ -1157,6 +1480,7 @@ function MatrixPanel({ scene, palette, enter, layout }: { scene: RemotionSceneIn
           style={{
             minHeight: isWide ? 190 : 160,
             padding: '22px 24px',
+            borderRadius: radius.card,
             border: `1px solid ${palette.line}`,
             background: index === 0 ? palette.surfaceStrong : palette.surface
           }}
@@ -1257,6 +1581,7 @@ function NetworkPanel({ scene, palette, enter, progress, layout }: { scene: Remo
           width: isWide ? 220 : 200,
           minHeight: 180,
           padding: '22px 24px',
+          borderRadius: radius.panel,
           border: `1px solid ${palette.line}`,
           background: palette.surfaceStrong,
           boxShadow: `0 0 28px ${palette.accent}18`
@@ -1279,6 +1604,7 @@ function NetworkPanel({ scene, palette, enter, progress, layout }: { scene: Remo
             width: isWide ? 280 : 220,
             minHeight: isWide ? 130 : 110,
             padding: '20px 22px',
+            borderRadius: radius.card,
             border: `1px solid ${palette.line}`,
             background: index % 2 === 0 ? palette.surface : `${palette.accent}12`,
             color: palette.text,
@@ -1320,6 +1646,7 @@ function PyramidPanel({ scene, palette, enter, layout }: { scene: RemotionSceneI
             width: widths[index] || widths[widths.length - 1],
             minHeight: isWide ? 88 : 80,
             padding: '18px 24px',
+            borderRadius: radius.card,
             border: `1px solid ${palette.line}`,
             background: index === 0 ? `${palette.accent2}20` : index === items.length - 1 ? palette.surfaceStrong : palette.surface,
             color: palette.text,
@@ -1358,6 +1685,7 @@ function ChecklistPanel({ scene, palette, enter, layout }: { scene: RemotionScen
         <div
           style={{
             padding: '28px 28px 30px',
+            borderRadius: radius.panel,
             border: `1px solid ${palette.line}`,
             background: palette.surfaceStrong,
             display: 'grid',
@@ -1381,6 +1709,7 @@ function ChecklistPanel({ scene, palette, enter, layout }: { scene: RemotionScen
                 key={`${term}-${index}`}
                 style={{
                   padding: '8px 12px',
+                  borderRadius: radius.chip,
                   border: `1px solid ${palette.line}`,
                   background: index === 0 ? `${palette.accent}18` : 'rgba(255,255,255,0.05)',
                   color: index === 0 ? palette.accent : palette.text,
@@ -1405,8 +1734,10 @@ function ChecklistPanel({ scene, palette, enter, layout }: { scene: RemotionScen
               gap: 18,
               minHeight: isWide ? 94 : 88,
               padding: '0 24px 0 0',
+              borderRadius: radius.card,
               border: `1px solid ${palette.line}`,
-              background: index === 0 ? palette.surfaceStrong : palette.surface
+              background: index === 0 ? palette.surfaceStrong : palette.surface,
+              overflow: 'hidden'
             }}
           >
             <div
@@ -1436,6 +1767,7 @@ function ChecklistPanel({ scene, palette, enter, layout }: { scene: RemotionScen
 
 function CtaPanel({ scene, palette, enter, layout }: { scene: RemotionSceneInput; palette: AiPalette; enter: number; layout: AiLayout }) {
   const isWide = layout.isWide;
+  const summary = displaySummary(scene, '记住框架，再去执行', isWide ? 18 : 14, 3);
   return (
     <div
       style={{
@@ -1444,6 +1776,7 @@ function CtaPanel({ scene, palette, enter, layout }: { scene: RemotionSceneInput
         right: isWide ? 112 : 72,
         top: isWide ? 208 : 286,
         padding: isWide ? '38px 42px' : '34px 30px',
+        borderRadius: radius.panel,
         border: `1px solid ${palette.line}`,
         background: palette.surfaceStrong,
         display: 'grid',
@@ -1458,7 +1791,7 @@ function CtaPanel({ scene, palette, enter, layout }: { scene: RemotionSceneInput
         ))}
       </div>
       <div style={{ color: palette.muted, fontSize: isWide ? 28 : 30, lineHeight: 1.42 }}>
-        {splitLines(scene.voiceover, isWide ? 34 : 20, 3).map((line, index) => (
+        {summary.map((line, index) => (
           <div key={`${line}-${index}`}>{line}</div>
         ))}
       </div>
@@ -1468,6 +1801,7 @@ function CtaPanel({ scene, palette, enter, layout }: { scene: RemotionSceneInput
             key={`${term}-${index}`}
             style={{
               padding: '14px 22px',
+              borderRadius: radius.card,
               background: index === 0 ? `linear-gradient(90deg, ${palette.accent}, ${palette.positive})` : 'rgba(255,255,255,0.08)',
               color: index === 0 ? '#020617' : palette.text,
               border: `1px solid ${index === 0 ? palette.accent : palette.line}`,
@@ -1505,6 +1839,7 @@ function Keywords({ scene, palette, enter, layout }: { scene: RemotionSceneInput
           key={`${term}-${index}`}
           style={{
             padding: '11px 18px',
+            borderRadius: radius.chip,
             background: index === 0 ? `${palette.accent}2e` : 'rgba(255,255,255,0.07)',
             border: `1px solid ${index === 0 ? palette.accent : palette.line}`,
             color: index === 0 ? palette.accent : palette.text,
@@ -1521,7 +1856,12 @@ function Keywords({ scene, palette, enter, layout }: { scene: RemotionSceneInput
 
 function SubtitleBar({ scene, palette, frame, layout }: { scene: RemotionSceneInput; palette: AiPalette; frame: number; layout: AiLayout }) {
   const activeCue = scene.subtitleCues?.find((cue) => frame >= cue.startSec * FPS && frame <= cue.endSec * FPS);
-  const text = activeCue?.text || scene.subtitle;
+  const rawText = activeCue?.text || scene.subtitle;
+  const cueProgress = activeCue
+    ? clamp((frame - activeCue.startSec * FPS) / Math.max(1, (activeCue.endSec - activeCue.startSec) * FPS), 0, 1)
+    : 1;
+  const shouldType = scene.visualType === 'screen' || scene.layout === 'process' || scene.layout === 'network';
+  const text = shouldType ? `${typingText(rawText, cueProgress)}${cueProgress < 0.98 ? '|' : ''}` : rawText;
   const isWide = layout.isWide;
   return (
     <div
@@ -1531,6 +1871,7 @@ function SubtitleBar({ scene, palette, frame, layout }: { scene: RemotionSceneIn
         right: isWide ? 260 : 62,
         bottom: isWide ? 38 : 62,
         padding: isWide ? '16px 24px' : '20px 24px',
+        borderRadius: radius.panel,
         background: 'rgba(2, 6, 23, 0.82)',
         border: `1px solid ${palette.line}`,
         color: palette.text,
@@ -1573,6 +1914,7 @@ function SceneVisual({
     <AbsoluteFill style={{ opacity: motion.opacity, transform: motion.transform }}>
       <Background palette={palette} progress={progress} />
       <AccentWave palette={palette} progress={progress} />
+      <SceneBackdrop scene={scene} palette={palette} progress={progress} layout={layout} displayMode={displayMode} />
       <Header input={input} scene={scene} sceneIndex={sceneIndex} sceneCount={sceneCount} palette={palette} enter={enter} layout={layout} />
       {displayMode === 'hero' ? <HeroPanel scene={scene} palette={palette} enter={enter} layout={layout} /> : null}
       {displayMode === 'cards' ? <InsightCards scene={scene} palette={palette} enter={enter} layout={layout} /> : null}
