@@ -8,7 +8,7 @@
     "samplePath": "/generated/voices/user_admin_demo/voice_profile_1776852032356_c01r5d/sample-cosyvoice.wav",
     "isDefault": true,
     "createdAt": "2026-04-22T10:00:32.358Z",
-    "updatedAt": "2026-04-22T16:00:15.581Z",
+    "updatedAt": "2026-04-24T13:31:25.680Z",
     "sampleObjectKey": "video-factory/voice-samples/user_admin_demo/voice_profile_1776852032356_c01r5d/sample-cosyvoice.wav",
     "sampleStorageProvider": "aliyun-oss",
     "providerVoiceId": "cosyvoice-v2-videof1r5d-2c71d765e21343a0b3b2aa74be5bea55"

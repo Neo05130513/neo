@@ -1,0 +1,292 @@
+[
+  {
+    "id": "pipeline_job_1777037486741_4n722b",
+    "tutorialId": "tutorial_1776995559391_5gw8yb",
+    "status": "completed",
+    "stage": "completed",
+    "progress": 100,
+    "detail": "已完成，生成 1 条脚本。",
+    "createdAt": "2026-04-24T13:31:26.741Z",
+    "updatedAt": "2026-04-24T13:33:07.255Z",
+    "startedAt": "2026-04-24T13:31:26.744Z",
+    "previewText": "中小企业上AI第一步：找到那个每天都在…｜中小企业上AI，第一步真不是买系统。绝大多数人踩的坑，是还没搞清楚问题是什么，就先跑去选产品",
+    "totalTopics": 1,
+    "result": {
+      "tutorialId": "tutorial_1776995559391_5gw8yb",
+      "tutorialTitle": "中小企业上AI，",
+      "topicCount": 1,
+      "scriptCount": 1,
+      "scripts": [
+        {
+          "id": "script_1777037587243_wy70xc",
+          "title": "中小企业上AI第一步：找到那个每天都在…",
+          "hook": "中小企业上AI，第一步真不是买系统。绝大多数人踩的坑，是还没搞清楚问题是什么，就先跑去选产品"
+        }
+      ],
+      "firstScriptId": "script_1777037587243_wy70xc",
+      "firstScriptTitle": "中小企业上AI第一步：找到那个每天都在…",
+      "firstScriptShots": [
+        {
+          "order": 1,
+          "title": "中小企业上AI第一步：找到那个每天都在…",
+          "voiceover": "中小企业上AI，第一步真不是买系统。绝大多数人踩的坑，是还没搞清楚问题是什么，就先跑去选产品",
+          "subtitle": "中小企业上AI，第一步真不是买系统。绝大多数人踩的坑，是还没搞清楚...",
+          "visualPrompt": "开场标题画面，突出主题：中小企业上AI第一步：找到那个每天都在…",
+          "durationSec": 8.5
+        },
+        {
+          "order": 2,
+          "title": "买系统救不了这个问题",
+          "voiceover": "很多老板一听到“AI能提效”",
+          "subtitle": "很多老板一听到“AI能提效”",
+          "visualPrompt": "讲解信息卡画面，围绕\"买系统救不了这个问题\"展示关键概念和辅助图形。",
+          "durationSec": 2.3
+        },
+        {
+          "order": 3,
+          "title": "买系统救不了这个问题",
+          "voiceover": "第一反应就是“买套系统”",
+          "subtitle": "第一反应就是“买套系统”",
+          "visualPrompt": "讲解信息卡画面，围绕\"买系统救不了这个问题\"展示关键概念和辅助图形。",
+          "durationSec": 2.3
+        },
+        {
+          "order": 4,
+          "title": "买系统救不了这个问题",
+          "voiceover": "结果系统买回来，发现问题没解决，还多了一堆新麻烦",
+          "subtitle": "结果系统买回来，发现问题没解决，还多了一堆新麻烦",
+          "visualPrompt": "问题拆解画面，用对比、警示标记和冲突结构呈现：结果系统买回来，发现问题没解决，还多了一堆新麻烦",
+          "durationSec": 5.5
+        },
+        {
+          "order": 5,
+          "title": "买系统救不了这个问题",
+          "voiceover": "因为根本没把问题本身看清楚，就急着找工具",
+          "subtitle": "因为根本没把问题本身看清楚，就急着找工具",
+          "visualPrompt": "问题拆解画面，用对比、警示标记和冲突结构呈现：因为根本没把问题本身看清楚，就急着找工具",
+          "durationSec": 4.9
+        },
+        {
+          "order": 6,
+          "title": "买系统救不了这个问题",
+          "voiceover": "就像家里乱，你不去整理",
+          "subtitle": "就像家里乱，你不去整理",
+          "visualPrompt": "讲解信息卡画面，围绕\"买系统救不了这个问题\"展示关键概念和辅助图形。",
+          "durationSec": 2.5
+        },
+        {
+          "order": 7,
+          "title": "买系统救不了这个问题",
+          "voiceover": "先去买了个新柜子",
+          "subtitle": "先去买了个新柜子",
+          "visualPrompt": "讲解信息卡画面，围绕\"买系统救不了这个问题\"展示关键概念和辅助图形。",
+          "durationSec": 2.3
+        },
+        {
+          "order": 8,
+          "title": "买系统救不了这个问题",
+          "voiceover": "中小企业上AI，最重要的第一步",
+          "subtitle": "中小企业上AI，最重要的第一步",
+          "visualPrompt": "讲解信息卡画面，围绕\"买系统救不了这个问题\"展示关键概念和辅助图形。",
+          "durationSec": 4.2
+        },
+        {
+          "order": 9,
+          "title": "每天都在重复的那个动作",
+          "voiceover": "什么才算真正值得AI介入的问题",
+          "subtitle": "什么才算真正值得AI介入的问题",
+          "visualPrompt": "问题拆解画面，用对比、警示标记和冲突结构呈现：什么才算真正值得AI介入的问题",
+          "durationSec": 4.2
+        },
+        {
+          "order": 10,
+          "title": "每天都在重复的那个动作",
+          "voiceover": "标准很简单：每天都在重复",
+          "subtitle": "标准很简单：每天都在重复",
+          "visualPrompt": "讲解信息卡画面，围绕\"每天都在重复的那个动作\"展示关键概念和辅助图形。",
+          "durationSec": 2.5
+        },
+        {
+          "order": 11,
+          "title": "每天都在重复的那个动作",
+          "voiceover": "而且最容易出错，三个条件同时满足，才是AI的菜",
+          "subtitle": "而且最容易出错，三个条件同时满足，才是AI的菜",
+          "visualPrompt": "问题拆解画面，用对比、警示标记和冲突结构呈现：而且最容易出错，三个条件同时满足，才是AI的菜",
+          "durationSec": 5.3
+        },
+        {
+          "order": 12,
+          "title": "每天都在重复的那个动作",
+          "voiceover": "只满足一个，效果都打折扣",
+          "subtitle": "只满足一个，效果都打折扣",
+          "visualPrompt": "讲解信息卡画面，围绕\"每天都在重复的那个动作\"展示关键概念和辅助图形。",
+          "durationSec": 2.5
+        },
+        {
+          "order": 13,
+          "title": "三种最常见的重复场景",
+          "voiceover": "来看几个真实的高频场景",
+          "subtitle": "来看几个真实的高频场景",
+          "visualPrompt": "讲解信息卡画面，围绕\"三种最常见的重复场景\"展示关键概念和辅助图形。",
+          "durationSec": 2.3
+        },
+        {
+          "order": 14,
+          "title": "三种最常见的重复场景",
+          "voiceover": "场景一：客户反复问型号差异，销售每天要解释十几遍",
+          "subtitle": "场景一：客户反复问型号差异，销售每天要解释十几遍",
+          "visualPrompt": "讲解信息卡画面，围绕\"三种最常见的重复场景\"展示关键概念和辅助图形。",
+          "durationSec": 5.5
+        },
+        {
+          "order": 15,
+          "title": "三种最常见的重复场景",
+          "voiceover": "场景二：客户问售后怎么处理，同样的流程要重复说",
+          "subtitle": "场景二：客户问售后怎么处理，同样的流程要重复说",
+          "visualPrompt": "操作流程画面，分层展示：场景二：客户问售后怎么处理，同样的流程要重复说",
+          "durationSec": 5.3
+        },
+        {
+          "order": 16,
+          "title": "三种最常见的重复场景",
+          "voiceover": "场景三：产品介绍没有统一版本",
+          "subtitle": "场景三：产品介绍没有统一版本",
+          "visualPrompt": "讲解信息卡画面，围绕\"三种最常见的重复场景\"展示关键概念和辅助图形。",
+          "durationSec": 4.1
+        },
+        {
+          "order": 17,
+          "title": "三种最常见的重复场景",
+          "voiceover": "每个销售各说各的",
+          "subtitle": "每个销售各说各的",
+          "visualPrompt": "讲解信息卡画面，围绕\"三种最常见的重复场景\"展示关键概念和辅助图形。",
+          "durationSec": 2.3
+        },
+        {
+          "order": 18,
+          "title": "三种最常见的重复场景",
+          "voiceover": "答错了客户还投诉",
+          "subtitle": "答错了客户还投诉",
+          "visualPrompt": "讲解信息卡画面，围绕\"三种最常见的重复场景\"展示关键概念和辅助图形。",
+          "durationSec": 2.3
+        },
+        {
+          "order": 19,
+          "title": "三种最常见的重复场景",
+          "voiceover": "这三个场景有一个共同点：人做了大量低价值的重复劳动",
+          "subtitle": "这三个场景有一个共同点：人做了大量低价值的重复劳动",
+          "visualPrompt": "讲解信息卡画面，围绕\"三种最常见的重复场景\"展示关键概念和辅助图形。",
+          "durationSec": 5.6
+        },
+        {
+          "order": 20,
+          "title": "三种最常见的重复场景",
+          "voiceover": "而且出错率随疲劳程度直线上升",
+          "subtitle": "而且出错率随疲劳程度直线上升",
+          "visualPrompt": "问题拆解画面，用对比、警示标记和冲突结构呈现：而且出错率随疲劳程度直线上升",
+          "durationSec": 4.1
+        },
+        {
+          "order": 21,
+          "title": "失败案例",
+          "voiceover": "没梳理就上系统：有一种典型的失败路径：公司想做“销售辅助AI”",
+          "subtitle": "没梳理就上系统：有一种典型的失败路径：公司想做“销售辅助AI”",
+          "visualPrompt": "问题拆解画面，用对比、警示标记和冲突结构呈现：没梳理就上系统：有一种典型的失败路径：公司想做“销售辅助AI”",
+          "durationSec": 6.1
+        },
+        {
+          "order": 22,
+          "title": "失败案例",
+          "voiceover": "买了一套系统回来",
+          "subtitle": "买了一套系统回来",
+          "visualPrompt": "讲解信息卡画面，围绕\"失败案例\"展示关键概念和辅助图形。",
+          "durationSec": 2.3
+        },
+        {
+          "order": 23,
+          "title": "失败案例",
+          "voiceover": "结果推不动，因为销售话术本来就没有统一版本",
+          "subtitle": "结果推不动，因为销售话术本来就没有统一版本",
+          "visualPrompt": "讲解信息卡画面，围绕\"失败案例\"展示关键概念和辅助图形。",
+          "durationSec": 5
+        },
+        {
+          "order": 24,
+          "title": "失败案例",
+          "voiceover": "AI不知道该学谁的",
+          "subtitle": "AI不知道该学谁的",
+          "visualPrompt": "讲解信息卡画面，围绕\"失败案例\"展示关键概念和辅助图形。",
+          "durationSec": 2.3
+        },
+        {
+          "order": 25,
+          "title": "失败案例",
+          "voiceover": "系统给出来的回答",
+          "subtitle": "系统给出来的回答",
+          "visualPrompt": "讲解信息卡画面，围绕\"失败案例\"展示关键概念和辅助图形。",
+          "durationSec": 2.3
+        },
+        {
+          "order": 26,
+          "title": "失败案例",
+          "voiceover": "客户听了觉得不专业",
+          "subtitle": "客户听了觉得不专业",
+          "visualPrompt": "讲解信息卡画面，围绕\"失败案例\"展示关键概念和辅助图形。",
+          "durationSec": 2.3
+        },
+        {
+          "order": 27,
+          "title": "失败案例",
+          "voiceover": "反而更不信任，这不是AI的问题",
+          "subtitle": "反而更不信任，这不是AI的问题",
+          "visualPrompt": "问题拆解画面，用对比、警示标记和冲突结构呈现：反而更不信任，这不是AI的问题",
+          "durationSec": 4.2
+        },
+        {
+          "order": 28,
+          "title": "失败案例",
+          "voiceover": "是问题本身没有被梳理清楚",
+          "subtitle": "是问题本身没有被梳理清楚",
+          "visualPrompt": "问题拆解画面，用对比、警示标记和冲突结构呈现：是问题本身没有被梳理清楚",
+          "durationSec": 2.3
+        },
+        {
+          "order": 29,
+          "title": "失败案例",
+          "voiceover": "AI不知道该解决什么",
+          "subtitle": "AI不知道该解决什么",
+          "visualPrompt": "讲解信息卡画面，围绕\"失败案例\"展示关键概念和辅助图形。",
+          "durationSec": 2.3
+        },
+        {
+          "order": 30,
+          "title": "总结与下一步",
+          "voiceover": "今天回去就做一件事：找你们团队要一份最近一个月被问过最多的问题清单，那三个出现频率最高的，就是AI落地的第一批候选",
+          "subtitle": "今天回去就做一件事：找你们团队要一份最近一个月被问过最多的问题清单...",
+          "visualPrompt": "结尾总结画面，突出下一步行动：总结与下一步",
+          "durationSec": 8.5
+        }
+      ]
+    },
+    "completedAt": "2026-04-24T13:33:07.255Z"
+  },
+  {
+    "id": "pipeline_job_1777037047089_chto5i",
+    "tutorialId": "tutorial_1776995559391_5gw8yb",
+    "status": "cancelled",
+    "stage": "cancelled",
+    "progress": 100,
+    "detail": "已清理旧的多选题脚本任务，请重新开始生成。",
+    "createdAt": "2026-04-24T13:24:07.089Z",
+    "updatedAt": "2026-04-24T13:38:30.000Z",
+    "startedAt": "2026-04-24T13:24:07.093Z",
+    "totalTopics": 5,
+    "currentTopicTitle": "中小企业上AI，的核心方法到底是什么",
+    "currentTopicIndex": 2,
+    "attempt": 1,
+    "maxAttempts": 3,
+    "elapsedMs": 20019,
+    "error": "已清理旧的多选题脚本任务",
+    "completedAt": "2026-04-24T13:38:30.000Z"
+  }
+]

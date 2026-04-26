@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { linkButtonStyle, newWindowLinkProps, primaryButtonStyle, secondaryButtonStyle, StatusBadge, subtlePanelStyle } from './_components/studio-ui';
 import { estimateGenerationFromText } from '@/lib/performance/estimate';
 import type { PerformanceSettings } from '@/lib/performance/settings';
+import type { PipelineJob } from '@/lib/types';
 
 type VoiceProfileView = {
   id: string;
@@ -46,6 +47,8 @@ type ScriptShotView = {
   visualPrompt: string;
   durationSec: number;
 };
+
+type PipelineJobView = Pick<PipelineJob, 'id' | 'status' | 'stage' | 'progress' | 'detail' | 'previewText' | 'currentTopicTitle' | 'currentTopicIndex' | 'totalTopics' | 'attempt' | 'maxAttempts' | 'elapsedMs' | 'createdAt' | 'updatedAt' | 'error' | 'result'>;
 
 const initialSteps: ProgressStep[] = [
   { id: 'voice', title: '确认旁白音色', desc: '从我的素材中选择一个复刻完成的音色。', status: 'idle', progress: 0 },
@@ -95,6 +98,8 @@ export function StartMakingClient({ initialProfiles, performanceSettings }: { in
   const [steps, setSteps] = useState<ProgressStep[]>(initialSteps);
   const [message, setMessage] = useState('');
   const [activeProjectId, setActiveProjectId] = useState('');
+  const [activePipelineJobId, setActivePipelineJobId] = useState('');
+  const [pipelineJob, setPipelineJob] = useState<PipelineJobView | null>(null);
   const [pendingScript, setPendingScript] = useState<PendingScriptConfirmation | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -104,6 +109,7 @@ export function StartMakingClient({ initialProfiles, performanceSettings }: { in
   const documentSectionRef = useRef<HTMLElement | null>(null);
   const generateSectionRef = useRef<HTMLElement | null>(null);
   const pollingProjectRef = useRef<string | null>(null);
+  const pollingPipelineJobRef = useRef<string | null>(null);
   const backgroundRequestedRef = useRef(false);
   const backgroundProjectRef = useRef<string | null>(null);
   const stopRequestedRef = useRef(false);
@@ -143,6 +149,7 @@ export function StartMakingClient({ initialProfiles, performanceSettings }: { in
         steps?: ProgressStep[];
         message?: string;
         activeProjectId?: string;
+        activePipelineJobId?: string;
         pendingScript?: PendingScriptConfirmation | null;
       };
       if (stored.selectedVoiceId && readyVoices.some((voice) => voice.id === stored.selectedVoiceId)) setSelectedVoiceId(stored.selectedVoiceId);
@@ -153,6 +160,7 @@ export function StartMakingClient({ initialProfiles, performanceSettings }: { in
       if (Array.isArray(stored.steps)) setSteps(initialSteps.map((step) => ({ ...step, ...(stored.steps || []).find((item) => item.id === step.id) })));
       if (stored.message) setMessage(stored.message);
       if (stored.activeProjectId) setActiveProjectId(stored.activeProjectId);
+      if (stored.activePipelineJobId) setActivePipelineJobId(stored.activePipelineJobId);
       if (stored.pendingScript?.scriptId && Array.isArray(stored.pendingScript.shots)) setPendingScript(stored.pendingScript);
     } catch {
     } finally {
@@ -171,9 +179,22 @@ export function StartMakingClient({ initialProfiles, performanceSettings }: { in
       steps,
       message,
       activeProjectId,
+      activePipelineJobId,
       pendingScript
     }));
-  }, [hydrated, selectedVoiceId, pastedTitle, pastedText, aspectRatio, autoRender, steps, message, activeProjectId, pendingScript]);
+  }, [hydrated, selectedVoiceId, pastedTitle, pastedText, aspectRatio, autoRender, steps, message, activeProjectId, activePipelineJobId, pendingScript]);
+
+  useEffect(() => {
+    if (!hydrated || !activePipelineJobId || pendingScript || activeProjectId) return;
+    let cancelled = false;
+    setBusy(true);
+    void pollPipelineJob(activePipelineJobId).finally(() => {
+      if (!cancelled) setBusy(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, activePipelineJobId, pendingScript, activeProjectId]);
 
   useEffect(() => {
     const renderStep = steps.find((step) => step.id === 'render');
@@ -194,6 +215,8 @@ export function StartMakingClient({ initialProfiles, performanceSettings }: { in
     setSteps(initialSteps);
     setMessage('');
     setActiveProjectId('');
+    setActivePipelineJobId('');
+    setPipelineJob(null);
     setPendingScript(null);
     setBackgroundRequested(false);
     backgroundRequestedRef.current = false;
@@ -316,24 +339,20 @@ export function StartMakingClient({ initialProfiles, performanceSettings }: { in
         href: `/tutorials/${tutorialId}`
       });
 
-      updateStep('parse', { status: 'running', progress: 35, detail: '正在生成脚本...' });
-      const pipelineResponse = await fetch('/api/pipeline/run', {
+      updateStep('parse', { status: 'running', progress: 12, detail: '正在提交脚本生成任务...' });
+      const pipelineResponse = await fetch('/api/pipeline/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tutorialId })
       });
       const pipelinePayload = await pipelineResponse.json();
       if (!pipelineResponse.ok) throw new Error(pipelinePayload.error || '生成脚本失败');
-      ensureNotStopped();
-      const script = pipelinePayload.results?.[0]?.scripts?.[0];
-      if (!script?.id) throw new Error('没有生成可用于视频制作的脚本。');
-      const shots = pipelinePayload.results?.[0]?.scriptShots?.[0]?.shots || [];
-      setPendingScript({ scriptId: script.id, title: script.title, href: `/scripts/${script.id}`, shots });
-      updateStep('parse', { status: 'waiting', progress: 100, detail: `已生成脚本和 ${shots.length} 个镜头，请先确认镜头拆解。`, href: `/scripts/${script.id}` });
-      updateStep('project', { status: 'waiting', progress: 0, detail: '等待客户确认镜头拆解后，再创建视频项目。' });
-      updateStep('render', { status: 'idle', progress: 0, detail: '确认镜头后再进入生成。' });
-      updateStep('review', { status: 'idle', progress: 0, detail: '确认镜头后再进入结果检查。' });
-      setMessage('脚本和镜头拆解已生成。请先确认镜头，再继续创建视频。');
+      const job = pipelinePayload.job as PipelineJobView | undefined;
+      if (!job?.id) throw new Error('脚本任务已创建，但没有返回任务 ID。');
+      setActivePipelineJobId(job.id);
+      setPipelineJob(job);
+      setMessage('脚本生成任务已开始，正在持续同步进度...');
+      await pollPipelineJob(job.id);
     } catch (error) {
       const text = error instanceof Error ? error.message : '生成视频失败';
       setMessage(text);
@@ -466,9 +485,107 @@ export function StartMakingClient({ initialProfiles, performanceSettings }: { in
       return;
     }
 
+    if (activePipelineJobId) {
+      setMessage('正在停止脚本生成任务...');
+      try {
+        const response = await fetch(`/api/pipeline/jobs/${activePipelineJobId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'cancel' })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || '停止脚本生成失败');
+        setPipelineJob(payload.job);
+        setActivePipelineJobId('');
+        updateStep('parse', { status: 'failed', progress: 100, detail: '已停止脚本生成。' });
+        setMessage('已停止脚本生成。');
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : '停止脚本生成失败');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     setSteps((current) => current.map((step) => step.status === 'running' ? { ...step, status: 'failed', progress: 100, detail: '已停止生成' } : step));
     setMessage('已停止当前生成流程。已经完成的文档或脚本会保留在对应页面。');
     setBusy(false);
+  }
+
+  async function pollPipelineJob(jobId: string) {
+    if (pollingPipelineJobRef.current === jobId) return;
+    pollingPipelineJobRef.current = jobId;
+    try {
+    for (let attempt = 0; attempt < 900; attempt += 1) {
+      const response = await fetch(`/api/pipeline/jobs/${jobId}`, { cache: 'no-store' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || '读取脚本生成进度失败');
+      const job = payload.job as PipelineJobView;
+      setPipelineJob(job);
+      syncPipelineStep(job);
+
+      if (job.status === 'completed') {
+        const firstScriptId = job.result?.firstScriptId;
+        const firstScriptTitle = job.result?.firstScriptTitle;
+        const shots = job.result?.firstScriptShots || [];
+        if (!firstScriptId || !firstScriptTitle) {
+          throw new Error('脚本任务已完成，但没有返回可用脚本。');
+        }
+        setPendingScript({
+          scriptId: firstScriptId,
+          title: firstScriptTitle,
+          href: `/scripts/${firstScriptId}`,
+          shots
+        });
+        setActivePipelineJobId('');
+        updateStep('parse', { status: 'waiting', progress: 100, detail: `已生成脚本和 ${shots.length} 个镜头，请先确认镜头拆解。`, href: `/scripts/${firstScriptId}` });
+        updateStep('project', { status: 'waiting', progress: 0, detail: '等待客户确认镜头拆解后，再创建视频项目。' });
+        updateStep('render', { status: 'idle', progress: 0, detail: '确认镜头后再进入生成。' });
+        updateStep('review', { status: 'idle', progress: 0, detail: '确认镜头后再进入结果检查。' });
+        setMessage('脚本和镜头拆解已生成。请先确认镜头，再继续创建视频。');
+        return;
+      }
+
+      if (job.status === 'failed' || job.status === 'cancelled') {
+        setActivePipelineJobId('');
+        const text = compactError(job.error || job.detail || (job.status === 'cancelled' ? '已停止脚本生成' : '脚本生成失败'));
+        updateStep('parse', { status: 'failed', progress: 100, detail: text });
+        setMessage(text);
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+    }
+
+    setMessage('脚本生成仍在进行中，页面会继续保留当前进度。');
+    } finally {
+      if (pollingPipelineJobRef.current === jobId) {
+        pollingPipelineJobRef.current = null;
+      }
+    }
+  }
+
+  function syncPipelineStep(job: PipelineJobView) {
+    const status = job.status === 'queued' ? 'waiting' : job.status === 'failed' || job.status === 'cancelled' ? 'failed' : job.status === 'completed' ? 'done' : 'running';
+    const prefix = job.totalTopics === 1
+      ? '主脚本'
+      : job.currentTopicIndex && job.totalTopics
+        ? `第 ${job.currentTopicIndex}/${job.totalTopics} 个脚本`
+        : job.totalTopics
+          ? `共 ${job.totalTopics} 个脚本`
+          : undefined;
+    const detailParts = [
+      prefix,
+      job.currentTopicTitle ? `当前选题：${job.currentTopicTitle}` : undefined,
+      job.detail
+    ].filter(Boolean);
+
+    updateStep('parse', {
+      status,
+      progress: job.progress,
+      detail: detailParts.join(' · ') || '正在生成脚本...',
+      href: job.result?.firstScriptId ? `/scripts/${job.result.firstScriptId}` : undefined
+    });
   }
 
   return (
@@ -568,6 +685,33 @@ export function StartMakingClient({ initialProfiles, performanceSettings }: { in
 
       {message ? <div style={{ borderRadius: 10, border: '1px solid #334155', background: '#111823', color: '#dbeafe', padding: 14, lineHeight: 1.7 }}>{message}</div> : null}
 
+      {pipelineJob && activePipelineJobId ? (
+        <section style={{ borderRadius: 12, border: '1px solid #155e75', background: '#071923', padding: 18, display: 'grid', gap: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <strong style={{ color: '#67e8f9' }}>脚本生成实时状态</strong>
+              <span style={{ color: '#cbd5e1', lineHeight: 1.6 }}>
+                {formatPipelineStage(pipelineJob.stage)}
+                {pipelineJob.totalTopics === 1 ? ' · 主脚本' : pipelineJob.currentTopicIndex && pipelineJob.totalTopics ? ` · 第 ${pipelineJob.currentTopicIndex}/${pipelineJob.totalTopics} 个脚本` : ''}
+                {pipelineJob.currentTopicTitle ? ` · ${pipelineJob.currentTopicTitle}` : ''}
+              </span>
+            </div>
+            <StatusBadge text={pipelineJob.status === 'queued' ? '排队中' : pipelineJob.status === 'running' ? '生成中' : pipelineJob.status === 'completed' ? '已完成' : pipelineJob.status === 'cancelled' ? '已停止' : '失败'} tone={pipelineJob.status === 'completed' ? 'success' : pipelineJob.status === 'failed' || pipelineJob.status === 'cancelled' ? 'danger' : pipelineJob.status === 'queued' ? 'warning' : 'info'} />
+          </div>
+          <ProgressBar value={pipelineJob.progress} />
+          <div style={{ display: 'grid', gap: 6 }}>
+            <span style={{ color: '#94a3b8', lineHeight: 1.6 }}>
+              等待时长：{formatElapsedMs(pipelineJob.elapsedMs)}
+              {pipelineJob.attempt && pipelineJob.maxAttempts ? ` · MiniMax 尝试 ${pipelineJob.attempt}/${pipelineJob.maxAttempts}` : ''}
+            </span>
+            <span style={{ color: '#dbeafe', lineHeight: 1.7 }}>{pipelineJob.detail || '正在等待最新状态...'}</span>
+            <span style={{ color: '#67e8f9', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+              实时文字预览：{pipelineJob.previewText || '模型还没有返回文本，当前主要是在等待本轮 MiniMax 响应。'}
+            </span>
+          </div>
+        </section>
+      ) : null}
+
       {pendingScript ? (
         <section style={{ borderRadius: 12, border: '1px solid #854d0e', background: '#17130a', padding: 18, display: 'grid', gap: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start', flexWrap: 'wrap' }}>
@@ -614,7 +758,23 @@ export function StartMakingClient({ initialProfiles, performanceSettings }: { in
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, color: '#cbd5e1', fontSize: 13 }}><span>总进度</span><strong>{totalProgress}%</strong></div>
             <ProgressBar value={totalProgress} />
           </div>
-          <button type="button" onClick={resetSteps} style={secondaryButtonStyle}>重置状态</button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={stopGeneration}
+              disabled={!busy}
+              style={{
+                ...secondaryButtonStyle,
+                borderColor: busy ? '#854d0e' : '#334155',
+                color: busy ? '#fde68a' : '#64748b',
+                cursor: busy ? 'pointer' : 'not-allowed',
+                opacity: busy ? 1 : 0.72
+              }}
+            >
+              停止当前任务
+            </button>
+            <button type="button" onClick={resetSteps} style={secondaryButtonStyle}>重置状态</button>
+          </div>
         </div>
         {hasDocumentInput ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 8 }}>
@@ -689,6 +849,36 @@ function ProgressBar({ value }: { value: number }) {
       <div style={{ width: `${Math.max(0, Math.min(100, value))}%`, height: '100%', borderRadius: 999, background: value >= 100 ? '#34d399' : '#38bdf8', transition: 'width 260ms ease' }} />
     </div>
   );
+}
+
+function formatElapsedMs(value?: number) {
+  if (!value || value < 1000) return '不足 1 秒';
+  const totalSeconds = Math.round(value / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (!minutes) return `${totalSeconds} 秒`;
+  return `${minutes} 分 ${seconds} 秒`;
+}
+
+function formatPipelineStage(stage: string) {
+  const labels: Record<string, string> = {
+    queued: '任务排队中',
+    starting: '开始处理',
+    cancelling: '正在停止',
+    cancelled: '已停止',
+    loading: '读取数据',
+    'parsing-tutorial': '解析文档',
+    'generating-topics': '提炼选题',
+    'topics-ready': '选题完成',
+    'generating-script': '正在生成脚本',
+    'requesting-model': '等待 MiniMax',
+    'validating-result': '校验脚本结构',
+    completed: '已完成',
+    failed: '处理失败',
+    'saving-results': '写入结果',
+    'script-ready': '脚本完成'
+  };
+  return labels[stage] || stage;
 }
 
 function ratioButtonStyle(active: boolean) {

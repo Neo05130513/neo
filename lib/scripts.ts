@@ -1,5 +1,5 @@
 import { Script, Topic, Tutorial } from './types';
-import { generateTextWithMiniMax, isMiniMaxConfigured } from './providers/minimax';
+import { generateTextWithMiniMax, isMiniMaxTextConfigured } from './providers/minimax';
 import { nowIso, simpleId } from './storage';
 
 interface ProfessionalShot {
@@ -15,6 +15,25 @@ interface ProfessionalScriptDraft {
   cta: string;
 }
 
+type GenerateScriptsProgress = {
+  stage: 'requesting-model' | 'validating-result' | 'completed';
+  detail: string;
+  previewText?: string;
+  attempt?: number;
+  maxAttempts?: number;
+  elapsedMs?: number;
+};
+
+type GenerateScriptsOptions = {
+  signal?: AbortSignal;
+  onProgress?: (progress: GenerateScriptsProgress) => void | Promise<void>;
+};
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (!signal?.aborted) return;
+  throw new Error(typeof signal.reason === 'string' ? signal.reason : '用户已停止脚本生成');
+}
+
 const LOW_VALUE_PATTERNS = [
   /^#+\s*/,
   /^[-*]\s*$/,
@@ -22,6 +41,46 @@ const LOW_VALUE_PATTERNS = [
   /^table of contents$/i,
   /^第?\d+\s*页$/,
   /^page\s*\d+$/i
+];
+
+const DIRECTOR_NOTE_PATTERNS = [
+  /先把使用边界说清楚，后面的操作才不会混乱[。！]?/g,
+  /这里要讲清楚[^。！？]*[。！]?/g,
+  /这一段要保留[^。！？]*[。！]?/g,
+  /让观众知道为什么要这么做，而不是只看到一个操作结果[。！]?/g,
+  /这一点要提前确认，否则流程看起来已经完成，实际结果还可能需要人工校验[。！]?/g,
+  /镜头需人工确认后再进入视频制作[。；;，,]*/g
+];
+
+const LOW_VALUE_SCRIPT_PATTERNS = [
+  /这一步做完，后面的流程才能顺着接上[。！]?/g,
+  /如果这一步没提前确认，落地时通常还得返工或人工补一次[。！]?/g,
+  /先把适用场景交代清楚，后面的步骤才更容易看懂[。！]?/g,
+  /按这套流程做更稳/g,
+  /先确认这几个步骤/g,
+  /根据文档自动生成讲解视频脚本/g,
+  /这条视频讲清楚/g,
+  /先把问题说清，再按文档拆步骤，最后提醒容易出错的地方[。！]?/g,
+  /先看它解决的核心问题[：:]?/g,
+  /建议从最小的一组素材开始[，,]?/g,
+  /跑通以后，再把步骤、提示词和检查项沉淀成自己的固定模板[。！]?/g
+];
+
+const LOW_VALUE_TITLE_PATTERNS = [
+  /按这套流程做更稳/,
+  /先确认这几个步骤/,
+  /自动生成讲解视频脚本/,
+  /^步骤\s*\d+$/,
+  /^镜头\s*\d+$/
+];
+
+const BROKEN_SHOT_PATTERNS = [
+  /^\d+[.、．)\]]\s*/,
+  /^(个工具|个信号|个问题|个场景|个模型|个案例)/,
+  /^类[：:]/,
+  /^第[一二三四五六七八九十\d]+$/,
+  /^[：:，,、]/,
+  /^https?:\/\//
 ];
 
 function cleanLine(value: string) {
@@ -72,6 +131,19 @@ function clip(value: string, maxLength: number) {
   return `${text.slice(0, maxLength - 1)}…`;
 }
 
+function stripDirectorNotes(value: string) {
+  let cleaned = cleanLine(value);
+  for (const pattern of DIRECTOR_NOTE_PATTERNS) cleaned = cleaned.replace(pattern, '');
+  for (const pattern of LOW_VALUE_SCRIPT_PATTERNS) cleaned = cleaned.replace(pattern, '');
+  return cleaned
+    .replace(/[，,；;]{2,}/g, '，')
+    .replace(/。{2,}/g, '。')
+    .replace(/[，,；;]\s*[。！？]$/g, '。')
+    .replace(/^[，,；;。！？\s]+/, '')
+    .replace(/[，,；;。\s]+$/g, '')
+    .trim();
+}
+
 function extractJsonObject(raw: string) {
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
   const source = fenced || raw;
@@ -85,6 +157,21 @@ function extractJsonObject(raw: string) {
 
 function containsAny(value: string, keywords: string[]) {
   return keywords.some((keyword) => value.toLowerCase().includes(keyword.toLowerCase()));
+}
+
+function hasLowValueLanguage(value: string) {
+  const text = cleanLine(value);
+  return LOW_VALUE_SCRIPT_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function isWeakTitle(value: string) {
+  const text = cleanLine(value);
+  return !text || LOW_VALUE_TITLE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function looksBrokenShotText(value: string) {
+  const text = cleanLine(value);
+  return !text || BROKEN_SHOT_PATTERNS.some((pattern) => pattern.test(text));
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -191,19 +278,7 @@ function problemStatement(tutorial: Tutorial, evidence: string[], subject: strin
 
 function describeStepVoiceover(text: string) {
   const clean = cleanProfessionalLine(text);
-  if (/资料库|表格|字段|看板/.test(clean)) {
-    return `${clip(clean, 110)}。先把底层结构搭好，后面的记录、关联和自动化才有稳定的承载位置。`;
-  }
-  if (/关联|跟进|记录/.test(clean)) {
-    return `${clip(clean, 110)}。这样每一次沟通都能回到同一个客户档案里，避免信息散在聊天记录和个人备忘里。`;
-  }
-  if (/表单|录入|语音/.test(clean)) {
-    return `${clip(clean, 110)}。这个入口负责降低录入成本，让一线人员能更快把客户信息补进系统。`;
-  }
-  if (/自动化|机器人|工作流/.test(clean)) {
-    return `${clip(clean, 110)}。它负责把重复动作交给系统处理，让客户信息从收集到整理形成闭环。`;
-  }
-  return `${clip(clean, 120)}。这里要讲清楚它在整套流程里的作用，以及用户完成后会得到什么。`;
+  return clip(clean, 170);
 }
 
 function riskTitle(value: string) {
@@ -214,16 +289,61 @@ function riskTitle(value: string) {
 }
 
 function describeRiskVoiceover(value: string) {
-  const text = clip(value, 130);
-  return `${text}。这一点要提前确认，否则流程看起来已经完成，实际结果还可能需要人工校验。`;
+  return clip(cleanProfessionalLine(value), 170);
 }
 
 function normalizeStepTitle(value: string, index: number) {
   return cleanLine(value)
     .replace(/^\d+[.、]\s*/, '')
-    .replace(/^第[一二三四五六七八九十]+[步点、：:\s]*/, '')
+    .replace(/^第[一二三四五六七八九十\d]+步[：:\s]*/, '')
+    .replace(/^步骤[一二三四五六七八九十\d]+[：:\s]*/, '')
     .replace(/^[，,。:：、\s]+/, '')
     || `步骤 ${index + 1}`;
+}
+
+function buildShotTitle(value: string, fallback: string) {
+  const candidate = clip(cleanProfessionalLine(value)
+    .replace(/^\d+[.、．)\]]\s*/, '')
+    .replace(/^第[一二三四五六七八九十\d]+步[：:\s]*/, '')
+    .replace(/^步骤[一二三四五六七八九十\d]+[：:\s]*/, '')
+    .split(/[。；;]/)[0], 24);
+  return !looksBrokenShotText(candidate) ? candidate : fallback;
+}
+
+function findSupportingEvidence(step: string, evidence: string[]) {
+  const seed = normalizeTitleSeed(step)
+    .replace(/^[一二三四五六七八九十\d]+[.、]\s*/, '')
+    .slice(0, 18);
+  if (!seed) return '';
+  return evidence.find((item) => item.includes(seed) && sentenceLength(item) >= 28) || '';
+}
+
+function buildStepShot(step: string, evidence: string[], index: number): ProfessionalShot | null {
+  const normalized = cleanProfessionalLine(normalizeStepTitle(step, index));
+  if (!normalized || looksBrokenShotText(normalized)) return null;
+  const support = cleanProfessionalLine(findSupportingEvidence(normalized, evidence));
+  const voiceoverSource = sentenceLength(support) >= 28 ? support : normalized;
+  const voiceover = clip(cleanProfessionalLine(voiceoverSource), 170);
+  if (sentenceLength(voiceover) < 26) return null;
+  const titleSeed = normalized.split(/[：:。；;]/)[0] || normalized;
+  const title = buildShotTitle(titleSeed, `镜头 ${index + 1}`);
+  if (looksBrokenShotText(title)) return null;
+  return {
+    title,
+    voiceover,
+    visualPrompt: `流程节点画面，高亮当前动作：${clip(voiceover, 70)}`
+  };
+}
+
+function isWeakShot(shot: ProfessionalShot) {
+  const title = cleanProfessionalLine(shot.title || '');
+  const voiceover = cleanProfessionalLine(shot.voiceover || '');
+  const visualPrompt = cleanLine(shot.visualPrompt || '');
+  if (isWeakTitle(title) || looksBrokenShotText(title) || looksBrokenShotText(voiceover)) return true;
+  if (sentenceLength(voiceover) < 26) return true;
+  if (title === voiceover && sentenceLength(voiceover) < 60) return true;
+  if (hasLowValueLanguage(`${title} ${voiceover} ${visualPrompt}`)) return true;
+  return false;
 }
 
 function buildSteps(tutorial: Tutorial, evidence: string[]) {
@@ -287,18 +407,23 @@ function buildHook(topic: Topic, tutorial: Tutorial, evidence: string[]) {
   const subject = titleSubject(tutorial, evidence);
   const outcome = titleOutcome(tutorial, evidence);
   const firstEvidence = problemStatement(tutorial, evidence, subject, outcome);
-  return `这条视频讲清楚《${clip(subject, 28)}》怎么做。先把问题说清，再按文档拆步骤，最后提醒容易出错的地方。核心问题是：${clip(firstEvidence, 70)}`;
+  const summary = meaningfulSummary(tutorial, evidence);
+  const leading = clip(firstEvidence, 46);
+  if (summary && !hasLowValueLanguage(summary)) {
+    return cleanProfessionalLine(`${leading}。真正需要盯住的，是${clip(summary, 90)}。`);
+  }
+  return cleanProfessionalLine(`${leading}。下面按原文把关键步骤、限制条件和判断标准依次拆开。`);
 }
 
 function cleanProfessionalLine(value: string) {
-  return cleanLine(value)
+  return stripDirectorNotes(cleanLine(value)
     .replace(/^第\s*\d+\s*步[：:\s]*/g, '')
     .replace(/^步骤\s*\d+[：:\s]*/g, '')
     .replace(/^关键点\s*\d+[：:\s]*/g, '')
     .replace(/^关键字幕[：:\s]*/g, '')
     .replace(/^最后收束[：:\s]*/g, '')
     .replace(/^补充说明\s*\d*[：:\s]*/g, '')
-    .trim();
+    .trim());
 }
 
 function normalizeTitleSeed(value: string) {
@@ -378,25 +503,22 @@ function titleAction(tutorial: Tutorial, evidence: string[]) {
 }
 
 function buildScriptTitle(topic: Topic, tutorial: Tutorial, evidence: string[]) {
-  const subject = titleSubject(tutorial, evidence);
-  const outcome = titleOutcome(tutorial, evidence);
-  const action = titleAction(tutorial, evidence);
-  const tool = tutorial.tools[0];
-  const audience = tutorial.targetAudience[0];
-  const risk = tutorial.risks[0] ? clip(normalizeTitleSeed(tutorial.risks[0]), 18) : '';
-  const subjectHasTool = Boolean(tool && subject.includes(tool));
+  const subject = clip(titleSubject(tutorial, evidence), 18);
+  const topicTitle = clip(normalizeTitleSeed(topic.title), 18);
+  const tutorialTitle = clip(normalizeTitleSeed(tutorial.title), 18);
+  const steps = buildSteps(tutorial, evidence);
+  const firstStep = steps[0] ? clip(normalizeTitleSeed(steps[0]), 10) : '';
+  const firstRisk = tutorial.risks[0] ? clip(normalizeTitleSeed(tutorial.risks[0]), 10) : '';
 
   const candidates = [
-    outcome && action ? `${subject}：${action}拆清${outcome}` : '',
-    outcome ? `${subject}：从文档到${outcome}` : '',
-    tool && outcome && !subjectHasTool ? `${tool}怎么做${outcome}` : '',
-    audience ? `${audience}做${subject}，先确认这几个步骤` : '',
-    risk ? `${subject}最容易忽略的关键步骤` : '',
-    subject ? `${subject}，按这套流程做更稳` : '',
-    normalizeTitleSeed(topic.title)
-  ].map((item) => clip(item, 34)).filter((item) => item.length >= 6);
+    tutorialTitle,
+    subject && firstRisk ? `${subject}：${firstRisk}` : '',
+    subject && firstStep ? `${subject}：${firstStep}` : '',
+    subject,
+    topicTitle
+  ].map((item) => clip(item, 20)).filter((item) => item.length >= 6);
 
-  return candidates[0] || '根据文档自动生成讲解视频脚本';
+  return candidates.find((item) => !isWeakTitle(item)) || tutorialTitle || topicTitle || subject || '文档讲解脚本';
 }
 
 function buildBody(topic: Topic, tutorial: Tutorial, profile: ReturnType<typeof estimateScriptProfile>) {
@@ -449,50 +571,113 @@ function buildBody(topic: Topic, tutorial: Tutorial, profile: ReturnType<typeof 
 function naturalCta(topic: Topic, tutorial: Tutorial, evidence: string[]) {
   const subject = titleSubject(tutorial, evidence);
   const outcome = titleOutcome(tutorial, evidence);
-  const audience = tutorial.targetAudience[0] || topic.audience || '你';
-  const nextAction = outcome
-    ? `先按这套流程做出一个可检查的${outcome}`
-    : '先按这套流程跑通一遍，再根据自己的场景微调';
-  return `如果${audience}也要处理《${clip(subject, 24)}》，建议从最小的一组素材开始，${nextAction}。跑通以后，再把步骤、提示词和检查项沉淀成自己的固定模板。`;
+  const target = outcome || clip(subject, 24);
+  return `如果你接下来要实操《${clip(subject, 24)}》，先拿一组最小样本把${target}跑通，再回头补齐参数、检查项和异常处理。`;
 }
 
 function buildDirectorPrompt(topic: Topic, tutorial: Tutorial, evidence: string[], profile: ReturnType<typeof estimateScriptProfile>) {
+  const subject = titleSubject(tutorial, evidence);
+  const outcome = titleOutcome(tutorial, evidence);
+  const summary = meaningfulSummary(tutorial, evidence);
+  const steps = buildSteps(tutorial, evidence);
+  const hookProblem = problemStatement(tutorial, evidence, subject, outcome);
+  const remotionLayouts = dedupeLines([
+    'hero: 开场问题、收益、主张',
+    'process: 操作链路、节点推进、逐步展开',
+    'contrast: 前后对比、错误与正确、方案差异',
+    'timeline: 时间顺序、阶段推进、里程碑',
+    'matrix: 分类、条件、维度比较',
+    'checklist: 检查项、条件确认、落地清单',
+    'mistake: 易错点、风险提醒、反例拆解',
+    'network: 关系图、信息流、依赖关系',
+    'cause: 原因、机制、因果结构',
+    'pyramid: 分层结构、结论到依据',
+    'chart: 只有原文确实出现数据、趋势、比例时才使用',
+    'cta: 只用于结尾行动引导'
+  ]);
+  const visualModes = [
+    '流程推进',
+    '局部高亮',
+    '节点逐个出现',
+    '参数卡片切换',
+    '对比翻牌',
+    '关系连线',
+    '时间线推进',
+    '清单勾选',
+    '风险警示闪现',
+    '结果状态变化'
+  ];
   const sourceBlocks = [
     `文档标题：${tutorial.title}`,
-    tutorial.summary ? `文档摘要：${tutorial.summary}` : '',
+    summary ? `文档摘要：${summary}` : '',
+    `内容主题：${subject}`,
+    outcome ? `期望产出：${outcome}` : '',
+    `核心问题：${hookProblem}`,
     tutorial.tools.length ? `工具：${tutorial.tools.join('、')}` : '',
+    tutorial.methods.length ? `方法：${tutorial.methods.join('、')}` : '',
     tutorial.targetAudience.length ? `受众：${tutorial.targetAudience.join('、')}` : '',
     tutorial.scenarios.length ? `场景：${tutorial.scenarios.join('、')}` : '',
-    tutorial.steps.length ? `解析到的步骤：\n${tutorial.steps.slice(0, 16).map((step, index) => `${index + 1}. ${[step.title, step.detail].filter(Boolean).join('：')}`).join('\n')}` : '',
+    steps.length ? `解析到的步骤：\n${steps.slice(0, 16).map((step, index) => `${index + 1}. ${step}`).join('\n')}` : '',
     evidence.length ? `原文依据：\n${evidence.slice(0, 18).map((item, index) => `${index + 1}. ${item}`).join('\n')}` : '',
     tutorial.risks.length ? `风险/注意：\n${tutorial.risks.slice(0, 8).map((item, index) => `${index + 1}. ${item}`).join('\n')}` : '',
-    `期望时长：${profile.duration}`
+    `期望时长：${profile.duration}`,
+    `建议动画表达：${visualModes.join('、')}`,
+    `Remotion 画面版式参考：\n${remotionLayouts.join('\n')}`
   ].filter(Boolean).join('\n\n');
 
   const systemPrompt = [
-    '你是一位资深中文视频分镜导演和商业教育类视频编导，专门把文档改写成专业、清晰、可拍摄的讲解视频脚本。',
-    '你的目标不是总结文档，而是设计一条用户可以确认并直接生成视频的镜头脚本。',
-    '必须遵守：',
-    '1. 只输出 JSON，不要 Markdown，不要解释。',
-    '2. 按文档真实内容写，不要编造文档没有的功能、平台、结果。',
-    '3. 不要出现“关键点”“第几步”“步骤一”“关键字幕”“最后收束”“补充说明”等机械标签。',
-    '4. 每个镜头必须是一个自然的口播段落，像专业讲解视频的旁白，不要像大纲。',
-    '5. 镜头标题要短、明确、能概括这一镜头的画面任务。',
-    '6. 每个 voiceover 控制在 60 到 220 个汉字；信息多就拆成更多镜头，不要删掉关键条件、参数、限制和操作细节。',
-    '7. 镜头数量根据内容决定，短文不少于 8 个，中等文档 12 到 20 个，长文可以 20 到 36 个；不要强行压成 4 到 6 个。',
-    '8. 开场镜头直接说明用户问题和视频收益，不要空泛营销。',
-    '9. 中间镜头按因果和操作顺序展开，避免重复同一句、重复同一动作。',
-    '10. 风险提醒只能写真正的限制、校验、容易失败的地方；没有就不要硬写。',
-    '11. 结尾只做自然行动引导，不要写“最后收束”“结尾行动”“确认镜头”“生成视频”这类制作系统内部话术。',
-    '12. visualPrompt 要告诉画面如何呈现，比如流程图、表格字段、高亮操作、对比卡片、风险提示卡，不要只复述旁白。',
-    '13. hook 是开场口播，cta 是结尾口播，shots 只放中间主体镜头，不要把开场和结尾重复放进 shots。',
-    '14. cta 必须面向观众下一步怎么实践本文档内容，不能面向视频制作人员。',
-    '输出格式必须是：{"title":"...","hook":"...","shots":[{"title":"...","voiceover":"...","visualPrompt":"..."}],"cta":"..."}'
+    '你是中文知识视频的总编导，不是摘要器，不是普通文案助手。',
+    '你的任务是把输入文档改写成可直接进入 Remotion 分镜流程的专业讲解脚本。',
+    '最高优先级：完整理解原文，尽可能保留有效信息，而不是为了更容易生成视频就把内容写空。',
+    '',
+    '在输出前，你必须先在内部完成这套固定工作流，然后再一次性输出 JSON：',
+    '步骤 A：重建文档要解决的问题、适用对象、前置条件、最终产出。',
+    '步骤 B：梳理原文里的事实、步骤、参数、限制、风险、判断标准，决定哪些信息必须保留。',
+    '步骤 C：把内容组织成讲解视频的叙事顺序，通常按“问题/收益 -> 背景或边界 -> 原理或结构 -> 关键步骤 -> 限制与风险 -> 判断结果 -> 下一步行动”推进。',
+    '步骤 D：把信息拆成镜头，每个镜头只承载一个明确任务；如果信息密度高，就增加镜头数量，不要把多个重点塞进同一屏。',
+    '步骤 E：为每个镜头设计适合 Remotion 的动态画面表达，信息必须分步出现，不允许一开始整屏把所有内容全部展示出来。',
+    '步骤 F：输出前自检，确认没有编造、没有漏掉关键限制、没有机械串场、没有把屏幕文字和旁白写成重复朗读。',
+    '',
+    '脚本规则：',
+    '1. 只输出 JSON，不要 Markdown，不要解释，不要展示你的思考过程。',
+    '2. 严格依据输入文档，不要编造文档里没有的功能、效果、结论、平台能力或数据。',
+    '3. 不要为了压缩时长删掉关键条件、参数、限制、风险、检查动作和判断标准。',
+    '4. 每个镜头的 voiceover 都必须像专业讲解视频旁白，负责解释、连接、判断，不能照本宣读屏幕文字。',
+    '5. 屏幕文字必须短、准、可动画呈现；subtitle 和 visualPrompt 只能提炼重点，不能等于完整旁白。',
+    '6. 镜头标题要短、明确、能概括画面任务，不要写“步骤一”“关键点”“补充说明”“最后收束”等机械标签。',
+    '6.1 标题必须像编辑在写选题，长度尽量控制在 8 到 18 个汉字，优先短标题，不要写“按这套流程做更稳”“先确认这几个步骤”“根据文档自动生成讲解视频脚本”这类空泛题目。',
+    '7. hook 直接点出问题、任务或认知差距，不要写空泛开场，不要写“今天这条视频”“接下来让我们看一下”这类口水话。',
+    '8. shots 只放主体镜头，不要把开场和结尾重复塞进 shots。',
+    '9. cta 只面向观众的下一步实践，不要面向视频制作人员，不要出现“确认镜头”“生成视频”“成片”之类内部流程话术。',
+    '10. 镜头数量根据内容密度决定。短文不少于 8 个，中等文档通常 12 到 20 个，长文可以 20 到 36 个；宁可多镜头，也不要大段压缩。',
+    '11. 每个 voiceover 控制在 60 到 220 个汉字；信息真的很多就拆镜头，不要缩水成空泛总结。',
+    '12. 中间镜头按因果、结构、步骤和限制推进，避免连续几个镜头都在说同一件事，也避免重复同一句话术。',
+    '13. 风险提醒只能写真实的限制、校验、失败条件、适用边界，没有就不要硬造。',
+    '14. 明确禁用这些低质句式：“这一步做完，后面的流程才能顺着接上”“先把适用场景交代清楚，后面的步骤才更容易看懂”“如果这一步没提前确认，落地时通常还得返工或人工补一次”。',
+    '',
+    'Remotion 动态画面规则：',
+    '1. visualPrompt 必须明确说明画面怎么动，至少包含“先出现什么、再展开什么、重点高亮什么、最后如何收束或切换”。',
+    '2. 画面默认采用动画讲解风格、信息图风格、动态演示风格，不要把一个镜头做成静态 PPT 页面或整页文字海报。',
+    '3. 可以使用流程推进、局部放大、节点逐个出现、对比卡翻转、连线建立、时间线推进、清单勾选、风险标记闪现、参数卡片切换等表达。',
+    '4. visualPrompt 必须服务 Remotion 画面结构，比如流程图、字段卡、关系图、对比卡、检查清单、时间线、矩阵、原因链、金字塔结构等。',
+    '5. 同一条脚本的镜头画面要有变化，不要每个镜头都用同一种版式或同一种静态信息卡。',
+    '6. 禁止写“画面展示旁白全文”“整屏显示全部步骤”“全文逐字出现”之类无效描述。',
+    '7. 不要让 visualPrompt 只是重复 voiceover，要让画面和旁白互补。',
+    '',
+    '输出格式必须严格为：{"title":"...","hook":"...","shots":[{"title":"...","voiceover":"...","visualPrompt":"..."}],"cta":"..."}',
+    '其中每个 shot 的 visualPrompt 都必须写出动态呈现顺序，且天然适配 Remotion 动画分镜。'
   ].join('\n');
 
   const userPrompt = [
-    '请把下面文档信息改写成专业视频分镜脚本。',
-    '注意：shots 是用户确认视频前看到的核心内容，必须专业、顺滑、能直接进入生成。',
+    '请基于下面资料生成“适合 Remotion 动态讲解视频”的专业分镜脚本。',
+    '生成要求：',
+    '1. 先按固定工作流在内部捋清原文，再输出结果。',
+    '2. 优先保证内容覆盖和准确性，不要为了省镜头把内容写空。',
+    '3. 旁白必须重写成讲解，不是朗读屏幕字。',
+    '4. 每个镜头只表达一个明确目标，画面通过动画逐步展开，不要一屏堆满。',
+    '5. visualPrompt 必须具体到 Remotion 可执行的动态表现，不要只写抽象风格词。',
+    '6. 如果原文信息多，就拆更多镜头，把内容展开讲清楚。',
+    '7. 尽量把原文里的步骤、限制、风险、参数、判断条件都体现在镜头里。',
     '',
     sourceBlocks
   ].join('\n');
@@ -511,76 +696,35 @@ function normalizeProfessionalDraft(raw: unknown, fallbackTitle: string): Profes
     }))
     .filter((shot) => sentenceLength(shot.title) >= 2 && sentenceLength(shot.voiceover) >= 18)
     .filter((shot) => !/关键字幕|最后收束|补充说明|关键点|第\d+步/.test(`${shot.title}${shot.voiceover}`))
+    .filter((shot) => !isWeakShot(shot))
     .slice(0, 36);
 
   if (shots.length < 6) return null;
+  const title = clip(cleanProfessionalLine(String(value.title || fallbackTitle)), 20) || fallbackTitle;
+  const hook = cleanProfessionalLine(String(value.hook || shots[0].voiceover));
+  const cta = cleanProfessionalLine(String(value.cta || ''));
+  if (isWeakTitle(title) || hasLowValueLanguage(`${title} ${hook} ${cta}`) || sentenceLength(hook) < 32) return null;
   return {
-    title: clip(cleanProfessionalLine(String(value.title || fallbackTitle)), 38) || fallbackTitle,
-    hook: cleanProfessionalLine(String(value.hook || shots[0].voiceover)),
+    title,
+    hook,
     shots,
-    cta: cleanProfessionalLine(String(value.cta || ''))
+    cta
   };
 }
 
 function draftToBody(draft: ProfessionalScriptDraft) {
-  return draft.shots.map((shot, index) => `${index + 1}. ${shot.title}：${shot.voiceover}`).join('\n');
+  return draft.shots.map((shot) => `${shot.title}：${shot.voiceover}`).join('\n');
 }
 
-function fallbackProfessionalDraft(topic: Topic, tutorial: Tutorial, evidence: string[], profile: ReturnType<typeof estimateScriptProfile>): ProfessionalScriptDraft {
-  const title = buildScriptTitle(topic, tutorial, evidence);
-  const subject = titleSubject(tutorial, evidence);
-  const outcome = titleOutcome(tutorial, evidence);
-  const steps = buildSteps(tutorial, evidence);
-  const introProblem = problemStatement(tutorial, evidence, subject, outcome);
-  const hook = `这条视频讲清楚《${clip(subject, 26)}》怎么做。先看它解决的核心问题：${clip(introProblem, 78)}。`;
-  const shots: ProfessionalShot[] = [];
-  if (tutorial.tools.length || tutorial.targetAudience.length || tutorial.scenarios.length) {
-    shots.push({
-      title: '交代工具和适用场景',
-      voiceover: [
-        tutorial.tools.length ? `这套流程主要会用到${tutorial.tools.slice(0, 4).join('、')}` : '',
-        tutorial.targetAudience.length ? `适合${tutorial.targetAudience.slice(0, 3).join('、')}` : '',
-        tutorial.scenarios.length ? `常用在${tutorial.scenarios.slice(0, 3).join('、')}` : ''
-      ].filter(Boolean).join('，') + '。先把使用边界说清楚，后面的操作才不会混乱。',
-      visualPrompt: '工具、角色、场景三列卡片，突出使用边界'
-    });
-  }
-  steps.slice(0, 18).forEach((step) => {
-    const text = cleanProfessionalLine(normalizeStepTitle(step, shots.length));
-    shots.push({
-      title: clip(text.split(/[。；;，,]/)[0], 22),
-      voiceover: describeStepVoiceover(text),
-      visualPrompt: `流程节点画面，高亮当前动作：${clip(text, 70)}`
-    });
-  });
-  (tutorial.risks.length ? tutorial.risks : evidence.filter(isRealRiskLine)).filter(isRealRiskLine).slice(0, 2).forEach((risk) => {
-    shots.push({
-      title: riskTitle(risk),
-      voiceover: describeRiskVoiceover(risk),
-      visualPrompt: `风险提示卡，列出需要检查的限制条件：${clip(risk, 70)}`
-    });
-  });
-  const used = new Set(shots.map((shot) => normalizeTitleSeed(shot.voiceover).slice(0, 28)));
-  for (const item of evidence) {
-    if (shots.length >= 24) break;
-    const text = cleanProfessionalLine(item);
-    const key = normalizeTitleSeed(text).slice(0, 28);
-    if (!text || used.has(key) || sentenceLength(text) < 14) continue;
-    used.add(key);
-    shots.push({
-      title: clip(text.split(/[。；;，,]/)[0], 22),
-      voiceover: `${clip(text, 150)}。这一段要保留原文里的关键判断，让观众知道为什么要这么做，而不是只看到一个操作结果。`,
-      visualPrompt: `信息卡或流程节点，突出原文关键句：${clip(text, 70)}`
-    });
-  }
-  const cta = naturalCta(topic, tutorial, evidence);
-  return { title, hook, shots: shots.slice(0, 28), cta };
+function buildMiniMaxScriptError(message: string) {
+  return new Error(`MiniMax 脚本生成失败：${message}`);
 }
 
-async function generateProfessionalDraft(topic: Topic, tutorial: Tutorial, evidence: string[], profile: ReturnType<typeof estimateScriptProfile>) {
+async function generateProfessionalDraft(topic: Topic, tutorial: Tutorial, evidence: string[], profile: ReturnType<typeof estimateScriptProfile>, options?: GenerateScriptsOptions) {
+  throwIfAborted(options?.signal);
   const fallbackTitle = buildScriptTitle(topic, tutorial, evidence);
-  if (!isMiniMaxConfigured()) {
-    return fallbackProfessionalDraft(topic, tutorial, evidence, profile);
+  if (!await isMiniMaxTextConfigured()) {
+    throw buildMiniMaxScriptError('未配置 MINIMAX_API_KEY，已停止脚本生成。');
   }
 
   try {
@@ -589,28 +733,57 @@ async function generateProfessionalDraft(topic: Topic, tutorial: Tutorial, evide
       systemPrompt,
       userPrompt,
       temperature: 0.28,
-      maxTokens: 8000
+      maxTokens: 8000,
+      timeoutMs: Number(process.env.MINIMAX_SCRIPT_TIMEOUT_MS || 1_800_000),
+      maxRetries: Number(process.env.MINIMAX_SCRIPT_MAX_RETRIES || 2),
+      signal: options?.signal,
+      onStatus: (status) => options?.onProgress?.({
+        stage: status.phase === 'completed' ? 'validating-result' : 'requesting-model',
+        detail: status.detail,
+        previewText: status.previewText,
+        attempt: status.attempt,
+        maxAttempts: status.maxAttempts,
+        elapsedMs: status.elapsedMs
+      })
     });
-    if (!generated?.text) return fallbackProfessionalDraft(topic, tutorial, evidence, profile);
+    if (!generated?.text) {
+      throw buildMiniMaxScriptError('模型未返回可用文本。');
+    }
+    await options?.onProgress?.({
+      stage: 'validating-result',
+      detail: 'MiniMax 已返回文本，正在校验脚本结构。',
+      previewText: generated.text.slice(0, 160)
+    });
     const parsed = extractJsonObject(generated.text);
     const normalized = normalizeProfessionalDraft(parsed, fallbackTitle);
-    if (!normalized) return fallbackProfessionalDraft(topic, tutorial, evidence, profile);
-    return {
+    if (!normalized) {
+      throw buildMiniMaxScriptError('模型返回内容未通过脚本结构校验。');
+    }
+    const result = {
       ...normalized,
       cta: /确认.*镜头|生成视频|成片出来|结尾行动|最后收束/.test(normalized.cta)
         ? naturalCta(topic, tutorial, evidence)
         : normalized.cta || naturalCta(topic, tutorial, evidence)
     };
+    await options?.onProgress?.({
+      stage: 'completed',
+      detail: `脚本生成完成：${result.title}`,
+      previewText: `${result.title}｜${result.hook}`
+    });
+    return result;
   } catch (error) {
-    console.warn('Professional script generation failed; using fallback script', error instanceof Error ? error.message : String(error));
-    return fallbackProfessionalDraft(topic, tutorial, evidence, profile);
+    if (error instanceof Error && error.message.startsWith('MiniMax 脚本生成失败：')) {
+      throw error;
+    }
+    throw buildMiniMaxScriptError(error instanceof Error ? error.message : String(error));
   }
 }
 
-export async function generateScripts(topic: Topic, tutorial: Tutorial): Promise<Script[]> {
+export async function generateScripts(topic: Topic, tutorial: Tutorial, options?: GenerateScriptsOptions): Promise<Script[]> {
+  throwIfAborted(options?.signal);
   const profile = estimateScriptProfile(tutorial);
   const evidence = extractEvidence(topic, tutorial, profile.evidenceLimit);
-  const draft = await generateProfessionalDraft(topic, tutorial, evidence, profile);
+  const draft = await generateProfessionalDraft(topic, tutorial, evidence, profile, options);
   const body = draftToBody(draft);
 
   return [{
@@ -623,7 +796,7 @@ export async function generateScripts(topic: Topic, tutorial: Tutorial): Promise
     hook: draft.hook,
     body,
     cta: draft.cta,
-    style: `${profile.style}；由专业视频分镜专家提示词生成，镜头需人工确认后再进入视频制作。`,
+    style: `${profile.style}；由固定分镜工作流提示词生成，强调内容覆盖、动态画面设计与 Remotion 适配。`,
     createdAt: nowIso(),
     version: 1,
     sourceScriptId: undefined

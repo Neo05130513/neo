@@ -56,11 +56,46 @@ const tables: Record<TableName, TableConfig<any>> = {
   },
   video_scenes: {
     file: 'data/video-scenes.json',
-    createSql: 'CREATE TABLE IF NOT EXISTS video_scenes (id TEXT PRIMARY KEY,row_order INTEGER NOT NULL,project_id TEXT NOT NULL,scene_order INTEGER NOT NULL,shot_type TEXT NOT NULL,visual_type TEXT NOT NULL,visual_prompt TEXT NOT NULL,voiceover TEXT NOT NULL,subtitle TEXT NOT NULL,duration_sec INTEGER NOT NULL)',
+    createSql: 'CREATE TABLE IF NOT EXISTS video_scenes (id TEXT PRIMARY KEY,row_order INTEGER NOT NULL,project_id TEXT NOT NULL,scene_order INTEGER NOT NULL,shot_type TEXT NOT NULL,visual_type TEXT NOT NULL,visual_prompt TEXT NOT NULL,voiceover TEXT NOT NULL,subtitle TEXT NOT NULL,duration_sec INTEGER NOT NULL,layout TEXT,headline TEXT,emphasis TEXT,keywords_json TEXT,cards_json TEXT,chart_data_json TEXT,transition TEXT)',
     selectSql: 'SELECT * FROM video_scenes ORDER BY row_order ASC',
-    insertSql: 'INSERT INTO video_scenes (id,row_order,project_id,scene_order,shot_type,visual_type,visual_prompt,voiceover,subtitle,duration_sec) VALUES (?,?,?,?,?,?,?,?,?,?)',
-    fromRow: (r): VideoScene => ({ id: r.id, projectId: r.project_id, order: r.scene_order, shotType: r.shot_type, visualType: r.visual_type, visualPrompt: r.visual_prompt, voiceover: r.voiceover, subtitle: r.subtitle, durationSec: r.duration_sec }),
-    toParams: (i: VideoScene, o) => [i.id, o, i.projectId, i.order, i.shotType, i.visualType, i.visualPrompt, i.voiceover, i.subtitle, i.durationSec]
+    insertSql: 'INSERT INTO video_scenes (id,row_order,project_id,scene_order,shot_type,visual_type,visual_prompt,voiceover,subtitle,duration_sec,layout,headline,emphasis,keywords_json,cards_json,chart_data_json,transition) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    fromRow: (r): VideoScene => ({
+      id: r.id,
+      projectId: r.project_id,
+      order: r.scene_order,
+      shotType: r.shot_type,
+      visualType: r.visual_type,
+      visualPrompt: r.visual_prompt,
+      voiceover: r.voiceover,
+      subtitle: r.subtitle,
+      durationSec: r.duration_sec,
+      layout: r.layout ?? undefined,
+      headline: r.headline ?? undefined,
+      emphasis: r.emphasis ?? undefined,
+      keywords: r.keywords_json ? JSON.parse(r.keywords_json) : undefined,
+      cards: r.cards_json ? JSON.parse(r.cards_json) : undefined,
+      chartData: r.chart_data_json ? JSON.parse(r.chart_data_json) : undefined,
+      transition: r.transition ?? undefined
+    }),
+    toParams: (i: VideoScene, o) => [
+      i.id,
+      o,
+      i.projectId,
+      i.order,
+      i.shotType,
+      i.visualType,
+      i.visualPrompt,
+      i.voiceover,
+      i.subtitle,
+      i.durationSec,
+      i.layout ?? null,
+      i.headline ?? null,
+      i.emphasis ?? null,
+      i.keywords?.length ? JSON.stringify(i.keywords) : null,
+      i.cards?.length ? JSON.stringify(i.cards) : null,
+      i.chartData?.length ? JSON.stringify(i.chartData) : null,
+      i.transition ?? null
+    ]
   },
   video_assets: {
     file: 'data/video-assets.json',
@@ -156,6 +191,17 @@ function ensureVideoProjectColumns(database: any) {  const existingColumns = new
   if (!existingColumns.has('ops_updated_at')) database.exec("ALTER TABLE video_projects ADD COLUMN ops_updated_at TEXT");
 }
 
+function ensureVideoSceneColumns(database: any) {
+  const existingColumns = new Set((database.prepare('PRAGMA table_info(video_scenes)').all() as Array<{ name: string }>).map((row) => row.name));
+  if (!existingColumns.has('layout')) database.exec('ALTER TABLE video_scenes ADD COLUMN layout TEXT');
+  if (!existingColumns.has('headline')) database.exec('ALTER TABLE video_scenes ADD COLUMN headline TEXT');
+  if (!existingColumns.has('emphasis')) database.exec('ALTER TABLE video_scenes ADD COLUMN emphasis TEXT');
+  if (!existingColumns.has('keywords_json')) database.exec('ALTER TABLE video_scenes ADD COLUMN keywords_json TEXT');
+  if (!existingColumns.has('cards_json')) database.exec('ALTER TABLE video_scenes ADD COLUMN cards_json TEXT');
+  if (!existingColumns.has('chart_data_json')) database.exec('ALTER TABLE video_scenes ADD COLUMN chart_data_json TEXT');
+  if (!existingColumns.has('transition')) database.exec('ALTER TABLE video_scenes ADD COLUMN transition TEXT');
+}
+
 function ensureQualityReviewColumns(database: any) {
   const existingColumns = new Set((database.prepare('PRAGMA table_info(quality_reviews)').all() as Array<{ name: string }>).map((row) => row.name));
   if (!existingColumns.has('issue_tags_json')) database.exec("ALTER TABLE quality_reviews ADD COLUMN issue_tags_json TEXT NOT NULL DEFAULT '[]'");
@@ -215,6 +261,7 @@ export async function ensureDatabaseReady() {
   for (const table of Object.values(tables)) database.exec(table.createSql);
   ensureScriptColumns(database);
   ensureVideoProjectColumns(database);
+  ensureVideoSceneColumns(database);
   ensureRenderJobColumns(database);
   ensureQualityReviewColumns(database);
   ensureUserColumns(database);

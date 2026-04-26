@@ -4,6 +4,7 @@ import { EnvHttpProxyAgent, fetch as undiciFetch } from 'undici';
 import { ensureDirectory } from '@/lib/storage';
 import { publicPathFromRelative, resolveAppPath } from '@/lib/runtime/paths';
 import type { VoiceSettings } from '@/lib/types';
+import { getVoiceSettings } from '@/lib/voice-settings';
 
 const MINIMAX_BASE_URL = process.env.MINIMAX_API_HOST || process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.com';
 const MINIMAX_TEXT_BASE_URL = process.env.MINIMAX_TEXT_BASE_URL || process.env.MINIMAX_API_HOST || process.env.MINIMAX_BASE_URL || 'https://api.minimax.io';
@@ -51,6 +52,20 @@ interface MiniMaxTextOptions {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  timeoutMs?: number;
+  maxRetries?: number;
+  retryDelayMs?: number;
+  signal?: AbortSignal;
+  settings?: VoiceSettings;
+  onStatus?: (status: {
+    phase: 'attempting' | 'waiting' | 'retrying' | 'responded' | 'completed';
+    attempt: number;
+    maxAttempts: number;
+    timeoutMs: number;
+    elapsedMs: number;
+    detail: string;
+    previewText?: string;
+  }) => void | Promise<void>;
 }
 
 function getMiniMaxConfig(settings?: VoiceSettings) {
@@ -101,9 +116,30 @@ function describeError(error: unknown) {
   return String(error);
 }
 
-async function fetchWithMiniMaxDiagnostics(url: string, init: RequestInit, context: string, timeoutMs = MINIMAX_REQUEST_TIMEOUT_MS) {
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetriableMiniMaxTextError(error: unknown) {
+  const message = describeError(error);
+  return /Timed out after \d+ms/i.test(message)
+    || /fetch failed/i.test(message)
+    || /ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|socket hang up|UND_ERR/i.test(message);
+}
+
+function isRetriableMiniMaxStatus(status: number) {
+  return [408, 409, 425, 429, 500, 502, 503, 504].includes(status);
+}
+
+async function fetchWithMiniMaxDiagnostics(url: string, init: RequestInit, context: string, timeoutMs = MINIMAX_REQUEST_TIMEOUT_MS, externalSignal?: AbortSignal) {
   const controller = new AbortController();
+  const abortFromExternalSignal = () => controller.abort(externalSignal?.reason || 'Request aborted');
   const timeout = setTimeout(() => controller.abort(`Timed out after ${timeoutMs}ms`), timeoutMs);
+  if (externalSignal?.aborted) {
+    abortFromExternalSignal();
+  } else if (externalSignal) {
+    externalSignal.addEventListener('abort', abortFromExternalSignal, { once: true });
+  }
 
   try {
     return await undiciFetch(url, {
@@ -112,9 +148,14 @@ async function fetchWithMiniMaxDiagnostics(url: string, init: RequestInit, conte
       dispatcher: MINI_MAX_PROXY_AGENT
     } as any);
   } catch (error) {
+    if (controller.signal.aborted) {
+      const reason = typeof controller.signal.reason === 'string' ? controller.signal.reason : 'Request aborted';
+      throw new Error(reason);
+    }
     throw new Error(`MiniMax network request failed during ${context}: ${describeError(error)}; url=${url}`);
   } finally {
     clearTimeout(timeout);
+    if (externalSignal) externalSignal.removeEventListener('abort', abortFromExternalSignal);
   }
 }
 
@@ -204,6 +245,16 @@ export function isMiniMaxConfigured() {
   return Boolean(MINIMAX_API_KEY);
 }
 
+export async function isMiniMaxTextConfigured() {
+  if (MINIMAX_API_KEY) return true;
+  try {
+    const settings = await getVoiceSettings();
+    return Boolean(settings.minimaxApiKey);
+  } catch {
+    return false;
+  }
+}
+
 function extractTextResponse(payload: any): string | null {
   return payload?.choices?.[0]?.message?.content
     || payload?.choices?.[0]?.text
@@ -215,9 +266,16 @@ function extractTextResponse(payload: any): string | null {
 }
 
 export async function generateTextWithMiniMax(options: MiniMaxTextOptions) {
-  if (!MINIMAX_API_KEY) return null;
+  const settings = options.settings || await getVoiceSettings().catch(() => undefined);
+  const apiKey = settings?.minimaxApiKey || MINIMAX_API_KEY;
+  if (!apiKey) return null;
 
   const endpoint = '/v1/text/chatcompletion_v2';
+  const textBaseUrl = process.env.MINIMAX_TEXT_BASE_URL
+    || settings?.minimaxBaseUrl
+    || process.env.MINIMAX_API_HOST
+    || process.env.MINIMAX_BASE_URL
+    || MINIMAX_TEXT_BASE_URL;
   const requestBody = {
     model: options.model || process.env.MINIMAX_TEXT_MODEL || 'MiniMax-M2.7',
     messages: [
@@ -233,36 +291,125 @@ export async function generateTextWithMiniMax(options: MiniMaxTextOptions) {
     temperature: options.temperature ?? 0.35,
     max_tokens: options.maxTokens || 4096
   };
+  const timeoutMs = options.timeoutMs ?? Number(process.env.MINIMAX_TEXT_TIMEOUT_MS || 1_800_000);
+  const maxRetries = Math.max(0, options.maxRetries ?? Number(process.env.MINIMAX_TEXT_MAX_RETRIES || 2));
+  const retryDelayMs = Math.max(0, options.retryDelayMs ?? Number(process.env.MINIMAX_TEXT_RETRY_DELAY_MS || 2500));
+  const maxAttempts = maxRetries + 1;
 
-  const response = await fetchWithMiniMaxDiagnostics(
-    `${MINIMAX_TEXT_BASE_URL}${endpoint}`,
-    {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(requestBody)
-    },
-    `text generation request at ${endpoint}`,
-    Number(process.env.MINIMAX_TEXT_TIMEOUT_MS || 60000)
-  );
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const attemptNumber = attempt + 1;
+    let heartbeat: ReturnType<typeof setInterval> | null = null;
+    try {
+      await options.onStatus?.({
+        phase: 'attempting',
+        attempt: attemptNumber,
+        maxAttempts,
+        timeoutMs,
+        elapsedMs: 0,
+        detail: `正在请求 MiniMax，第 ${attemptNumber}/${maxAttempts} 次尝试。`
+      });
 
-  const rawText = await response.text();
-  if (!response.ok) {
-    throw new Error(`MiniMax text generation failed at ${endpoint}: ${response.status} ${rawText}`);
+      const startedAt = Date.now();
+      heartbeat = options.onStatus
+        ? setInterval(() => {
+          void options.onStatus?.({
+            phase: 'waiting',
+            attempt: attemptNumber,
+            maxAttempts,
+            timeoutMs,
+            elapsedMs: Date.now() - startedAt,
+            detail: `MiniMax 正在生成文本，当前第 ${attemptNumber}/${maxAttempts} 次尝试，已等待 ${Math.max(1, Math.round((Date.now() - startedAt) / 1000))} 秒。`
+          });
+        }, 1000)
+        : null;
+
+      const response = await fetchWithMiniMaxDiagnostics(
+        `${textBaseUrl}${endpoint}`,
+        {
+          method: 'POST',
+          headers: getAuthHeaders(settings),
+          body: JSON.stringify(requestBody)
+        },
+        `text generation request at ${endpoint}`,
+        timeoutMs,
+        options.signal
+      );
+      if (heartbeat) clearInterval(heartbeat);
+      heartbeat = null;
+
+      const rawText = await response.text();
+      await options.onStatus?.({
+        phase: 'responded',
+        attempt: attemptNumber,
+        maxAttempts,
+        timeoutMs,
+        elapsedMs: Date.now() - startedAt,
+        detail: 'MiniMax 已返回响应，正在解析结果。',
+        previewText: rawText.slice(0, 160)
+      });
+      if (!response.ok) {
+        const error = new Error(`MiniMax text generation failed at ${endpoint}: ${response.status} ${rawText}`);
+        if (attempt < maxRetries && isRetriableMiniMaxStatus(response.status)) {
+          lastError = error;
+          await options.onStatus?.({
+            phase: 'retrying',
+            attempt: attemptNumber,
+            maxAttempts,
+            timeoutMs,
+            elapsedMs: Date.now() - startedAt,
+            detail: `MiniMax 返回 ${response.status}，${retryDelayMs * (attempt + 1) / 1000} 秒后重试。`
+          });
+          await sleep(retryDelayMs * (attempt + 1));
+          continue;
+        }
+        throw error;
+      }
+
+      const payload = ensureJsonPayload(rawText, endpoint);
+      ensureMiniMaxBaseResp(payload, endpoint);
+
+      const text = extractTextResponse(payload);
+      if (!text) {
+        throw new Error(`MiniMax text response did not contain content at ${endpoint}: ${rawText.slice(0, 1200)}`);
+      }
+
+      await options.onStatus?.({
+        phase: 'completed',
+        attempt: attemptNumber,
+        maxAttempts,
+        timeoutMs,
+        elapsedMs: Date.now() - startedAt,
+        detail: 'MiniMax 文本已生成完成，正在进入结构校验。',
+        previewText: text.slice(0, 160)
+      });
+
+      return {
+        text,
+        endpoint,
+        model: requestBody.model
+      };
+    } catch (error) {
+      if (heartbeat) clearInterval(heartbeat);
+      const wrapped = error instanceof Error ? error : new Error(String(error));
+      if (attempt < maxRetries && isRetriableMiniMaxTextError(wrapped)) {
+        lastError = wrapped;
+        await options.onStatus?.({
+          phase: 'retrying',
+          attempt: attemptNumber,
+          maxAttempts,
+          timeoutMs,
+          elapsedMs: 0,
+          detail: `MiniMax 请求异常：${wrapped.message}。${retryDelayMs * (attempt + 1) / 1000} 秒后重试。`
+        });
+        await sleep(retryDelayMs * (attempt + 1));
+        continue;
+      }
+      throw wrapped;
+    }
   }
 
-  const payload = ensureJsonPayload(rawText, endpoint);
-  ensureMiniMaxBaseResp(payload, endpoint);
-
-  const text = extractTextResponse(payload);
-  if (!text) {
-    throw new Error(`MiniMax text response did not contain content at ${endpoint}: ${rawText.slice(0, 1200)}`);
-  }
-
-  return {
-    text,
-    endpoint,
-    model: requestBody.model
-  };
+  throw lastError || new Error(`MiniMax text generation failed after ${maxRetries + 1} attempts at ${endpoint}`);
 }
 
 export async function generateImageWithMiniMax(options: MiniMaxImageOptions) {

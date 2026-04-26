@@ -3,20 +3,20 @@ import Link from 'next/link';
 export const newWindowLinkProps = {} as const;
 
 export const panelStyle = {
-  borderRadius: 12,
+  borderRadius: 20,
   border: '1px solid #263244',
   background: '#151b26'
 } as const;
 
 export const subtlePanelStyle = {
-  borderRadius: 10,
+  borderRadius: 18,
   border: '1px solid #243042',
   background: '#111823'
 } as const;
 
 export const primaryButtonStyle = {
   border: '1px solid #38bdf8',
-  borderRadius: 10,
+  borderRadius: 14,
   background: '#38bdf8',
   color: '#061018',
   padding: '11px 14px',
@@ -26,7 +26,7 @@ export const primaryButtonStyle = {
 
 export const secondaryButtonStyle = {
   border: '1px solid #334155',
-  borderRadius: 10,
+  borderRadius: 14,
   background: '#1b2330',
   color: '#e2e8f0',
   padding: '10px 13px',

@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation';
 import { StudioShell } from '../../_components/studio-shell';
 import { EmptyGuide, linkButtonStyle, MetricTile, newWindowLinkProps, Panel, SectionTitle, StatusBadge, subtlePanelStyle } from '../../_components/studio-ui';
 import { getRenderJobs, getScripts, getTutorials, getVideoAssets, getVideoProjects, getVideoScenes } from '@/lib/queries';
+import { sanitizeSceneText } from '@/lib/narration';
 import { buildSubtitleCues } from '@/lib/subtitles';
 import type { RemotionVideoInput } from '@/remotion/types';
 import { VideoProjectActions } from './project-actions';
@@ -25,7 +26,10 @@ export default async function VideoProjectDetailPage({ params }: { params: { id:
 
   const script = scripts.find((item) => item.id === project.scriptId);
   const tutorial = tutorials.find((item) => item.id === project.tutorialId);
-  const projectScenes = scenes.filter((item) => item.projectId === project.id).sort((a, b) => a.order - b.order);
+  const projectScenes = scenes
+    .filter((item) => item.projectId === project.id)
+    .sort((a, b) => a.order - b.order)
+    .map((scene) => sanitizeSceneText(scene));
   const projectAssets = assets.filter((item) => item.projectId === project.id);
   const videoAsset = projectAssets.find((asset) => asset.assetType === 'video' && asset.status === 'ready');
   const audioBySceneId = new Map(projectAssets.filter((asset) => asset.assetType === 'audio' && asset.status === 'ready').map((asset) => [asset.sceneId, asset.path]));
@@ -85,7 +89,7 @@ export default async function VideoProjectDetailPage({ params }: { params: { id:
           </div>
 
           {project.lastError ? (
-            <div style={{ borderRadius: 10, border: '1px solid #7f1d1d', background: '#3b1116', color: '#fecaca', padding: 14, lineHeight: 1.7 }}>
+            <div style={{ borderRadius: 18, border: '1px solid #7f1d1d', background: '#3b1116', color: '#fecaca', padding: 14, lineHeight: 1.7 }}>
               {project.lastError}
             </div>
           ) : null}
@@ -121,8 +125,8 @@ export default async function VideoProjectDetailPage({ params }: { params: { id:
             {projectScenes.length ? (
               <div style={{ display: 'grid', gap: 10 }}>
                 {projectScenes.slice(0, 12).map((scene) => (
-                  <div key={scene.id} style={{ ...subtlePanelStyle, padding: 13, display: 'grid', gridTemplateColumns: '34px minmax(0, 1fr) auto', gap: 12, alignItems: 'center' }}>
-                    <div style={{ width: 30, height: 30, borderRadius: 8, background: '#0f172a', color: '#7dd3fc', display: 'grid', placeItems: 'center', fontWeight: 800 }}>{scene.order}</div>
+                  <div key={scene.id} style={{ ...subtlePanelStyle, borderRadius: 20, padding: 13, display: 'grid', gridTemplateColumns: '34px minmax(0, 1fr) auto', gap: 12, alignItems: 'center' }}>
+                    <div style={{ width: 30, height: 30, borderRadius: 12, background: '#0f172a', color: '#7dd3fc', display: 'grid', placeItems: 'center', fontWeight: 800 }}>{scene.order}</div>
                     <div style={{ display: 'grid', gap: 5, minWidth: 0 }}>
                       <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{scene.headline || scene.subtitle || `镜头 ${scene.order}`}</strong>
                       <span style={{ color: '#94a3b8', lineHeight: 1.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{scene.subtitle || scene.visualPrompt}</span>

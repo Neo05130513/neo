@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Tutorial not found' }, { status: 404 });
   }
 
-  const generated = generateTopics(tutorial);
+  const generated = await generateTopics(tutorial);
   const nextTopics = [...generated, ...topics.filter((item) => item.tutorialId !== tutorialId)];
   await writeJsonFile('data/topics.json', nextTopics);
   await appendAuditLog({
